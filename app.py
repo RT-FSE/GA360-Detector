@@ -38,7 +38,7 @@ if uploaded_file is not None:
             raw_har = uploaded_file.getvalue().decode("utf-8")
             har_json = json.loads(raw_har)
             
-            # Ekstrakcja TYLKO zapytań analitycznych i limit do 15 żądań
+            # Ekstrakcja TYLKO zapytań analitycznych i limit do 15 żądań (ochrona przed błędem 429)
             filtered_requests = []
             for entry in har_json.get("log", {}).get("entries", []):
                 url = entry.get("request", {}).get("url", "")
@@ -51,7 +51,7 @@ if uploaded_file is not None:
                         "post_data": entry["request"].get("postData", {}).get("text", "")
                     })
                 
-                # TWARDA BLOKADA: Pobieramy tylko pierwsze 15 żądań, aby uniknąć limitu 429
+                # TWARDA BLOKADA: Pobieramy tylko pierwsze 15 żądań, aby uniknąć limitu tokenów
                 if len(filtered_requests) >= 15:
                     break
             
@@ -67,36 +67,40 @@ if uploaded_file is not None:
             Jesteś technicznym ekspertem web analityki. Otrzymujesz wyciąg żądań JSON (żądania HTTP do Google Analytics). 
             Twoim zadaniem jest analiza żądań i ocena, czy strona korzysta z płatnej wersji GA360.
 
-            Zastosuj rygorystyczne reguły decyzyjne i przypisz im odpowiednie ikony (✅ jeśli reguła/poszlaka została spełniona, ❌ jeśli nie została spełniona):
+            Zastosuj rygorystyczne reguły decyzyjne i przypisz im odpowiednie ikony (✅ jeśli reguła/poszlaka została spełniona, ❌ jeśli nie):
             1. TWARDA REGUŁA 1: Liczba parametrów 'ep.' oraz 'epn.' w jednym zdarzeniu > 25.
             2. TWARDA REGUŁA 2: Długość wartości jakiegokolwiek parametru > 100 znaków.
             3. TWARDA REGUŁA 3: Liczba właściwości użytkownika 'up.' lub 'upn.' w sesji > 25.
-            4. MIĘKKA POSZLAKA 1: Obecność parametrów 'sst.*' (Server-Side Tagging).
-            5. MIĘKKA POSZLAKA 2: Obecność rozbudowanych danych e-commerce w obiektach produktów 'pr1', 'pr2' itd.
+            4. TWARDA REGUŁA 4: Suma UNIKALNYCH nazw parametrów 'ep.' ze wszystkich żądań łącznie > 50.
+            5. TWARDA REGUŁA 5: Zlicz unikalne, niestandardowe parametry (custom dimensions) zdefiniowane na poziomie pojedynczego produktu (item-scoped, przesyłane wewnątrz obiektów pr1, pr2 itp.). Jeśli dla jednego produktu jest ich > 10 -> WERDYKT GA360 (100%).
+            6. MIĘKKA POSZLAKA 1: Server-Side Tagging (SSGTM). Sprawdź adres URL żądań. Jeśli żądania idą na domenę/subdomenę inną niż serwery Google (nie analytics.google.com i nie google-analytics.com), oznacza to serwer pośredniczący.
+            7. MIĘKKA POSZLAKA 2: Wykrycie wielu identyfikatorów 'tid' (Multi-tagging do kilku G-...).
+            8. MIĘKKA POSZLAKA 3: Ślady integracji z Google Marketing Platform (np. parametry Campaign Manager 360 / DV360 / SA360 / Floodlight).
 
-            Zwróć odpowiedź w czystym Markdown, dokładnie w poniższym formacie:
+            Zwróć odpowiedź w czystym Markdown, dokładnie w formacie:
             ### 📊 Wynik analizy Google Analytics
             * **WERDYKT:** [GA 360 / Darmowe GA4 / Prawdopodobnie GA 360]
             * **PEWNOŚĆ:** [np. 100% / 80%]
-            * **Measurement ID (tid):** `[G-XXXXXXXXXX]`
+            * **Wykryte Measurement ID (tid):** `[Wypisz wszystkie unikalne G-XXXXXXXXXX]`
 
             ---
-
             ### 📋 Kontrola Reguł Analitycznych
 
             **Reguły Krytyczne (Twarde - dają 100% pewności):**
-            * [✅ lub ❌] **Liczba parametrów > 25 w evencie** (Wykryto maks: [X] parametrów)
-            * [✅ lub ❌] **Długość wartości parametru > 100 znaków** (Najdłuższy parametr miał: [X] znaków)
-            * [✅ lub ❌] **Właściwości użytkownika (User Properties) > 25** (Wykryto maks: [X] właściwości)
+            * [✅/❌] **Liczba parametrów > 25 w evencie** (Wykryto maks: [X])
+            * [✅/❌] **Długość wartości parametru > 100 znaków** (Najdłuższy: [X] znaków)
+            * [✅/❌] **Właściwości użytkownika > 25** (Wykryto maks: [X])
+            * [✅/❌] **Suma unikalnych parametrów w sesji > 50** (Wykryto łącznie: [X])
+            * [✅/❌] **Niestandardowe parametry produktu (item-scoped) > 10** (Wykryto maks: [X] w jednym produkcie)
 
             **Reguły Kontekstowe (Miękkie - poszlaki biznesowe):**
-            * [✅ lub ❌] **Server-Side Tagging (GTM Serwerowy)** (Wykryto parametry `sst.*`)
-            * [✅ lub ❌] **Zaawansowany E-commerce Enterprise** (Obecność głębokich danych w parametrach obiektów produktów `prX`)
+            * [✅/❌] **Server-Side Tagging (Endpoint w 1st-party domain)** (Wykryto domenę: [Wpisz domenę])
+            * [✅/❌] **Korporacyjny Multi-tagging** (Zdarzenia lecą do wielu `tid`)
+            * [✅/❌] **Ekosystem Google Marketing Platform** (Ślady DV360/SA360/Floodlight)
 
             ---
-
             ### 🔍 Techniczne Uzasadnienie
-            [Napisz 2-3 zdania technicznego i logicznego podsumowania dlaczego wydałeś taki werdykt na podstawie powyższej checklisty].
+            [Krótkie podsumowanie dlaczego wydałeś taki werdykt].
             """
 
             # Wysłanie danych do modelu
