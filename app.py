@@ -7,7 +7,7 @@ st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", la
 
 # --- BRAMKA BEZPIECZEŃSTWA ---
 # Zmień to hasło na własne, które podasz zespołowi
-HASLO_DOSTEPOWE = "MojaTajnaFirma2026" 
+HASLO_DOSTEPOWE = "CheckGA4me!" 
 
 wpisane_haslo = st.text_input("Wpisz hasło dostępowe zespołu:", type="password")
 
