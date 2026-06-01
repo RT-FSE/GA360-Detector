@@ -38,33 +38,33 @@ if uploaded_file is not None:
             raw_har = uploaded_file.getvalue().decode("utf-8")
             har_json = json.loads(raw_har)
             
-            # Ekstrakcja TYLKO zapytań analitycznych i limit do 15 żądań (ochrona przed błędem 429)
+            # Ekstrakcja zapytań analitycznych oraz marketingowych Enterprise (DoubleClick/Floodlight)
             filtered_requests = []
             for entry in har_json.get("log", {}).get("entries", []):
                 url = entry.get("request", {}).get("url", "")
                 
-                # Szukamy żądań do GA4 (collect)
-                if "collect" in url or "google-analytics" in url:
+                # POPRAWKA: Łapiemy GA4 ORAZ systemy DoubleClick/Floodlight/GMP
+                if "collect" in url or "google-analytics" in url or "doubleclick" in url:
                     filtered_requests.append({
                         "url": url,
                         "query_string": entry["request"].get("queryString", []),
                         "post_data": entry["request"].get("postData", {}).get("text", "")
                     })
                 
-                # TWARDA BLOKADA: Pobieramy tylko pierwsze 15 żądań, aby uniknąć limitu tokenów
-                if len(filtered_requests) >= 15:
+                # TWARDA BLOKADA: Pobieramy tylko pierwsze 25 żądań (zwiększone z 15, aby pomieścić DoubleClick)
+                if len(filtered_requests) >= 25:
                     break
             
             # Zrzucenie odchudzonych danych do stringa, aby podać je modelowi
             har_content = json.dumps(filtered_requests, indent=2)
             
             if not filtered_requests:
-                st.warning("⚠️ Nie znaleziono żadnych żądań do Google Analytics w tym pliku. Upewnij się, że strona wysyła zdarzenia analityczne i wygeneruj plik ponownie.")
+                st.warning("⚠️ Nie znaleziono żadnych żądań do Google Analytics ani Google Marketing Platform w tym pliku.")
                 st.stop()
 
             # --- PROMPT SYSTEMOWY DLA AGENTA ---
             system_prompt = """
-            Jesteś technicznym ekspertem web analityki. Otrzymujesz wyciąg żądań JSON (żądania HTTP do Google Analytics). 
+            Jesteś technicznym ekspertem web analityki. Otrzymujesz wyciąg żądań JSON (żądania HTTP do Google Analytics i DoubleClick). 
             Twoim zadaniem jest analiza żądań i ocena, czy strona korzysta z płatnej wersji GA360.
 
             Zastosuj rygorystyczne reguły decyzyjne i przypisz im odpowiednie ikony (✅ jeśli reguła/poszlaka została spełniona, ❌ jeśli nie):
@@ -72,10 +72,10 @@ if uploaded_file is not None:
             2. TWARDA REGUŁA 2: Długość wartości jakiegokolwiek parametru > 100 znaków.
             3. TWARDA REGUŁA 3: Liczba właściwości użytkownika 'up.' lub 'upn.' w sesji > 25.
             4. TWARDA REGUŁA 4: Suma UNIKALNYCH nazw parametrów 'ep.' ze wszystkich żądań łącznie > 50.
-            5. TWARDA REGUŁA 5: Zlicz unikalne, niestandardowe parametry (custom dimensions) zdefiniowane na poziomie pojedynczego produktu (item-scoped, przesyłane wewnątrz obiektów pr1, pr2 itp.). Jeśli dla jednego produktu jest ich > 10 -> WERDYKT GA360 (100%).
-            6. MIĘKKA POSZLAKA 1: Server-Side Tagging (SSGTM). Sprawdź adres URL żądań. Jeśli żądania idą na domenę/subdomenę inną niż serwery Google (nie analytics.google.com i nie google-analytics.com), oznacza to serwer pośredniczący.
+            5. TWARDA REGUŁA 5: Zlicz unikalne, niestandardowe parametry zdefiniowane na poziomie pojedynczego produktu (item-scoped, wewnątrz obiektów pr1, pr2 itp.). Jeśli dla jednego produktu jest ich > 10 -> WERDYKT GA360 (100%).
+            6. MIĘKKA POSZLAKA 1: Server-Side Tagging (SSGTM). Sprawdź adres URL żądań. Jeśli żądania idą na domenę/subdomenę inną niż oficjalne serwery Google (nie analytics.google.com, nie google-analytics.com, nie doubleclick.net), oznacza to serwer pośredniczący.
             7. MIĘKKA POSZLAKA 2: Wykrycie wielu identyfikatorów 'tid' (Multi-tagging do kilku G-...).
-            8. MIĘKKA POSZLAKA 3: Ślady integracji z Google Marketing Platform (np. parametry Campaign Manager 360 / DV360 / SA360 / Floodlight).
+            8. MIĘKKA POSZLAKA 3: Ślady integracji z Google Marketing Platform. Szukaj żądań zawierających w URL frazę 'doubleclick' oraz specyficznych znaczników dla tagów Floodlight (np. aktywności typu 'activity', parametry 'src=', 'type=', 'cat=' służące do raportowania konwersji w Campaign Manager 360 / DV360).
 
             Zwróć odpowiedź w czystym Markdown, dokładnie w formacie:
             ### 📊 Wynik analizy Google Analytics
@@ -96,7 +96,7 @@ if uploaded_file is not None:
             **Reguły Kontekstowe (Miękkie - poszlaki biznesowe):**
             * [✅/❌] **Server-Side Tagging (Endpoint w 1st-party domain)** (Wykryto domenę: [Wpisz domenę])
             * [✅/❌] **Korporacyjny Multi-tagging** (Zdarzenia lecą do wielu `tid`)
-            * [✅/❌] **Ekosystem Google Marketing Platform** (Ślady DV360/SA360/Floodlight)
+            * [✅/❌] **Ekosystem Google Marketing Platform** (Wykryto tagi Floodlight / DoubleClick: [Tak/Nie])
 
             ---
             ### 🔍 Techniczne Uzasadnienie
