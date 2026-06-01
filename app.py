@@ -67,23 +67,36 @@ if uploaded_file is not None:
             Jesteś technicznym ekspertem web analityki. Otrzymujesz wyciąg żądań JSON (żądania HTTP do Google Analytics). 
             Twoim zadaniem jest analiza żądań i ocena, czy strona korzysta z płatnej wersji GA360.
 
-            Zastosuj rygorystyczne reguły decyzyjne:
-            1. TWARDA REGUŁA 1: Policz unikalne parametry 'ep.' oraz 'epn.' w jednym zdarzeniu. Jeśli jest ich >25 -> WERDYKT: GA 360 (100%).
-            2. TWARDA REGUŁA 2: Sprawdź długość znaków dla wartości parametrów. Jeśli jakakolwiek wartość przekracza 100 znaków -> WERDYKT: GA 360 (100%).
-            3. POSZLAKA: Szukaj parametrów zaczynających się od 'sst.' (oznacza Server-Side Tagging). Jeśli jest SSGTM + bogaty e-commerce -> Prawdopodobnie GA 360.
-            4. IDENTYFIKATOR: Zawsze wyciągaj i prezentuj identyfikator usługi z parametru 'tid' (zaczyna się od G-...).
+            Zastosuj rygorystyczne reguły decyzyjne i przypisz im odpowiednie ikony (✅ jeśli reguła/poszlaka została spełniona, ❌ jeśli nie została spełniona):
+            1. TWARDA REGUŁA 1: Liczba parametrów 'ep.' oraz 'epn.' w jednym zdarzeniu > 25.
+            2. TWARDA REGUŁA 2: Długość wartości jakiegokolwiek parametru > 100 znaków.
+            3. TWARDA REGUŁA 3: Liczba właściwości użytkownika 'up.' lub 'upn.' w sesji > 25.
+            4. MIĘKKA POSZLAKA 1: Obecność parametrów 'sst.*' (Server-Side Tagging).
+            5. MIĘKKA POSZLAKA 2: Obecność rozbudowanych danych e-commerce w obiektach produktów 'pr1', 'pr2' itd.
 
             Zwróć odpowiedź w czystym Markdown, dokładnie w poniższym formacie:
             ### 📊 Wynik analizy Google Analytics
             * **WERDYKT:** [GA 360 / Darmowe GA4 / Prawdopodobnie GA 360]
             * **PEWNOŚĆ:** [np. 100% / 80%]
             * **Measurement ID (tid):** `[G-XXXXXXXXXX]`
+
             ---
-            ### 🔍 Dowody z analizy sieciowej:
-            * **Liczba parametrów w najdłuższym evencie:** [X]
-            * **Najdłuższy parametr:** `ep.[nazwa]` = [X] znaków
-            * **Server-Side Tagging:** [Tak/Nie]
-            * **Krótkie uzasadnienie:** [1-2 zdania technicznego uzasadnienia Twojej decyzji]
+
+            ### 📋 Kontrola Reguł Analitycznych
+
+            **Reguły Krytyczne (Twarde - dają 100% pewności):**
+            * [✅ lub ❌] **Liczba parametrów > 25 w evencie** (Wykryto maks: [X] parametrów)
+            * [✅ lub ❌] **Długość wartości parametru > 100 znaków** (Najdłuższy parametr miał: [X] znaków)
+            * [✅ lub ❌] **Właściwości użytkownika (User Properties) > 25** (Wykryto maks: [X] właściwości)
+
+            **Reguły Kontekstowe (Miękkie - poszlaki biznesowe):**
+            * [✅ lub ❌] **Server-Side Tagging (GTM Serwerowy)** (Wykryto parametry `sst.*`)
+            * [✅ lub ❌] **Zaawansowany E-commerce Enterprise** (Obecność głębokich danych w parametrach obiektów produktów `prX`)
+
+            ---
+
+            ### 🔍 Techniczne Uzasadnienie
+            [Napisz 2-3 zdania technicznego i logicznego podsumowania dlaczego wydałeś taki werdykt na podstawie powyższej checklisty].
             """
 
             # Wysłanie danych do modelu
