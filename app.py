@@ -7,7 +7,7 @@ st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", la
 
 # --- BRAMKA BEZPIECZEŃSTWA ---
 # Zmień to hasło na własne, które podasz zespołowi
-HASLO_DOSTEPOWE = "CheckGA4me!" 
+HASLO_DOSTEPOWE = "MojaTajnaFirma2026" 
 
 wpisane_haslo = st.text_input("Wpisz hasło dostępowe zespołu:", type="password")
 
@@ -75,13 +75,13 @@ with tab1:
 
                 Zastosuj rygorystyczne reguły decyzyjne i przypisz im odpowiednie ikony (✅ jeśli reguła/poszlaka została spełniona, ❌ jeśli nie):
                 1. TWARDA REGUŁA 1: Liczba parametrów 'ep.' oraz 'epn.' w jednym zdarzeniu > 25.
-                2. TWARDA REGUŁA 2: Długość wartości jakiegokolwiek parametru > 100 znaków.
+                2. TWARDA REGUŁA 2: Długość wartości parametrów NIESTANDARDOWYCH (custom, zazwyczaj przedrostki ep.* lub klucze własne) > 100 znaków. BEZWZGLĘDNIE WYKLUCZ z tej reguły natywne parametry: 'page_location', 'page_title' oraz 'page_referrer', ponieważ mają one oficjalne wyższe limity w wersji darmowej (odpowiednio 1000, 300 i 420 znaków).
                 3. TWARDA REGUŁA 3: Liczba właściwości użytkownika 'up.' lub 'upn.' w sesji > 25.
-                4. TWARDA REGUŁA 4: Suma UNIKALNYCH nazw parametrów 'ep.' ze wszystkich żądań łącznie > 50.
-                5. TWARDA REGUŁA 5: Zlicz unikalne, niestandardowe parametry zdefiniowane na poziomie pojedynczego produktu (item-scoped, wewnątrz obiektów pr1, pr2 itp.). Jeśli dla jednego produktu jest ich > 10 -> WERDYKT GA360 (100%).
-                6. MIĘKKA POSZLAKA 1: Server-Side Tagging (SSGTM). Sprawdź adres URL żądań. Jeśli żądania idą na domenę/subdomenę inną niż oficjalne serwery Google (nie analytics.google.com, nie google-analytics.com, nie doubleclick.net), oznacza to serwer pośredniczący.
-                7. MIĘKKA POSZLAKA 2: Wykrycie wielu identyfikatorów 'tid' (Multi-tagging do kilku G-...).
-                8. MIĘKKA POSZLAKA 3: Ślady integracji z Google Marketing Platform. Szukaj żądań zawierających w URL frazę 'doubleclick' oraz specyficznych znaczników dla tagów Floodlight (np. aktywności typu 'activity', parametry 'src=', 'type=', 'cat=' służące do raportowania konwersji w Campaign Manager 360 / DV360).
+                4. TWARDA REGUŁA 4: Zlicz unikalne, niestandardowe parametry zdefiniowane na poziomie pojedynczego produktu (item-scoped, wewnątrz obiektów pr1, pr2 itp.). Jeśli dla jednego produktu jest ich > 10 -> WERDYKT GA360 (100%).
+                5. MIĘKKA POSZLAKA 1: Suma UNIKALNYCH nazw parametrów 'ep.' ze wszystkich żądań łącznie > 50. (Uwaga metodologiczna: to poszlaka, nie twardy dowód, ponieważ limity 50/125 dotyczą rejestracji wymiarów w panelu admina, a nie samej wysyłki sieciowej).
+                6. MIĘKKA POSZLAKA 2: Server-Side Tagging (SSGTM). Sprawdź adres URL żądań. Jeśli żądania idą na domenę/subdomenę inną niż oficjalne serwery Google (nie analytics.google.com, nie google-analytics.com, nie doubleclick.net), oznacza to serwer pośredniczący.
+                7. MIĘKKA POSZLAKA 3: Wykrycie wielu identyfikatorów 'tid' (Multi-tagging do kilku G-...).
+                8. MIĘKKA POSZLAKA 4: Ślady integracji z Google Marketing Platform. Szukaj żądań zawierających w URL frazę 'doubleclick' oraz specyficznych znaczników dla tagów Floodlight (np. aktywności typu 'activity', parametry 'src=', 'type=', 'cat=' służące do raportowania konwersji w Campaign Manager 360 / DV360).
 
                 Zwróć odpowiedź w czystym Markdown, dokładnie w formacie:
                 ### 📊 Wynik analizy Google Analytics
@@ -94,19 +94,19 @@ with tab1:
 
                 **Reguły Krytyczne (Twarde - dają 100% pewności):**
                 * [✅/❌] **Liczba parametrów > 25 w evencie** (Wykryto maks: [X])
-                * [✅/❌] **Długość wartości parametru > 100 znaków** (Najdłuższy: [X] znaków)
+                * [✅/❌] **Długość wartości parametru NIESTANDARDOWEGO > 100 znaków** (Najdłuższy niestandardowy: [X] znaków, natywne pominięto)
                 * [✅/❌] **Właściwości użytkownika > 25** (Wykryto maks: [X])
-                * [✅/❌] **Suma unikalnych parametrów w sesji > 50** (Wykryto łącznie: [X])
                 * [✅/❌] **Niestandardowe parametry produktu (item-scoped) > 10** (Wykryto maks: [X] w jednym produkcie)
 
-                **Reguły Kontekstowe (Miękkie - poszlaki biznesowe):**
+                **Reguły Kontekstowe (Miękkie - poszlaki biznesowe / wymagające weryfikacji API):**
+                * [✅/❌] **Suma unikalnych parametrów w sesji > 50** (Wykryto łącznie: [X] - wymaga potwierdzenia rejestracji w Admin API)
                 * [✅/❌] **Server-Side Tagging (Endpoint w 1st-party domain)** (Wykryto domenę: [Wpisz domenę])
                 * [✅/❌] **Korporacyjny Multi-tagging** (Zdarzenia lecą do wielu `tid`)
                 * [✅/❌] **Ekosystem Google Marketing Platform** (Wykryto tagi Floodlight / DoubleClick: [Tak/Nie])
 
                 ---
                 ### 🔍 Techniczne Uzasadnienie
-                [Krótkie podsumowanie dlaczego wydałeś taki werdykt].
+                [Krótkie podsumowanie dlaczego wydałeś taki werdykt z uwzględnieniem faktu rygorystycznego odrzucenia parametrów natywnych typu page_location].
                 """
 
                 # Wysłanie danych do modelu
@@ -139,11 +139,11 @@ with tab2:
         * **Przykład w logach:** Jeśli zdarzenie `view_item` wysyła parametry od `ep.parametr_1` aż do `ep.parametr_28` (np. kolor, rozmiar, dostępność, magazyn, ID dostawcy itp.), darmowa wersja by je ucięła.
         """)
 
-    with st.expander("2. Długość wartości parametru > 100 znaków"):
+    with st.expander("2. Długość wartości parametru niestandardowego > 100 znaków (⚠️ Uwaga na wyjątki natywne)"):
         st.markdown("""
-        * **Logika techniczna:** Agent mierzy liczbę znaków w stringu przypisanym do jakiegokolwiek parametru w żądaniu `/collect`.
-        * **Uzasadnienie limitu:** W darmowym GA4 każda wartość parametru tekstowego jest bezwzględnie ucinana po osiągnięciu **100 znaków**. GA4 360 pozwala na przesyłanie aż **500 znaków**.
-        * **Przykład w logach:** Parametr przekazujący pełny komunikat błędu systemowego: `ep.error_message="Error: SQLSTATE[HY000] [2002] Connection refused in /var/www/html/lib/db.php on line 45... (łącznie 145 znaków)"`. Obecność tak długiego ciągu to 100% dowód na GA360.
+        * **Logika techniczna:** Agent mierzy liczbę znaków w wartościach parametrów, ale skupia się wyłącznie na parametrach **niestandardowych** (custom).
+        * **Uzasadnienie limitu:** W darmowym GA4 każda wartość parametru *custom* (tekstowego) jest bezwzględnie ucinana po osiągnięciu **100 znaków**. GA4 360 pozwala na przesyłanie aż **500 znaków**.
+        * **Dlaczego ignorujemy page_location / page_title / page_referrer?** Google wprowadziło oficjalne wyjątki dla swoich wbudowanych parametrów. W darmowej wersji `page_title` może mieć do 300 znaków, `page_referrer` do 420 znaków, a adres URL (`page_location`) aż do 1000 znaków. Przekroczenie 100 znaków w adresie URL jest rzeczą naturalną i nie świadczy o licencji Enterprise. Dopiero przekroczenie 100 znaków w parametrze autorskim (np. `ep.internal_search_term`) jest dowodem na GA360.
         """)
 
     with st.expander("3. Właściwości użytkownika (User Properties) > 25"):
@@ -153,14 +153,7 @@ with tab2:
         * **Przykład w logach:** Duże systemy CRM przekazują w sesji mnóstwo cech klienta (np. status VIP, segment zakupowy, rok rejestracji, preferowana kategoria). Przekroczenie 25 takich właściwości w logach jednoznacznie demaskuje licencję Enterprise.
         """)
 
-    with st.expander("4. Suma unikalnych parametrów w sesji > 50"):
-        st.markdown("""
-        * **Logika techniczna:** Agent analizuje cały plik HAR zbiorczo i wyciąga listę unikalnych nazw parametrów `ep.*` ze wszystkich zarejestrowanych hitów.
-        * **Uzasadnienie limitu:** W bezpłatnym GA4 limit zarejestrowanych wymiarów niestandardowych (Custom Dimensions) na poziomie zdarzenia wynosi dokładnie **50**. W wersji 360 limit ten rośnie do **125**.
-        * **Przykład w logach:** Jeżeli użytkownik podczas kilkunastominutowej sesji przejdzie przez ścieżkę od strony głównej, przez koszyk, aż do zakupu, i w tym czasie skrypt prześle łącznie 62 różne parametry typu `ep.`, darmowa usługa nie byłaby w stanie ich przetworzyć.
-        """)
-
-    with st.expander("5. Niestandardowe parametry produktu (Item-scoped) > 10"):
+    with st.expander("4. Niestandardowe parametry produktu (Item-scoped) > 10"):
         st.markdown("""
         * **Logika techniczna:** Agent zagląda do obiektów e-commerce reprezentujących produkty (tablice `pr1`, `pr2` itp.) i liczy unikalne parametry niestandardowe przypisane do pojedynczego przedmiotu.
         * **Uzasadnienie limitu:** Dla parametrów na poziomie produktu (item-scoped custom dimensions) darmowy limit to **10**. Wersja płatna GA360 pozwala na wdrożenie aż **25** takich atrybutów.
@@ -173,20 +166,27 @@ with tab2:
     st.header("🟡 Reguły Kontekstowe (Miękkie / Poszlaki)")
     st.markdown("Te reguły nie wynikają bezpośrednio z blokad technicznych w kodzie front-endowym, ale niosą potężny ładunek informacji biznesowej. Spełnienie tych kryteriów oznacza, że firma operuje budżetami i architekturą klasy Enterprise.")
 
-    with st.expander("1. Server-Side Tagging (Punkt zbiórki w domenie 1st-party)"):
+    with st.expander("1. Suma unikalnych parametrów w sesji > 50"):
+        st.markdown("""
+        * **Logika techniczna:** Agent analizuje cały plik HAR zbiorczo i wyciąga listę unikalnych nazw parametrów `ep.*` ze wszystkich zarejestrowanych hitów.
+        * **Uzasadnienie limitu:** W bezpłatnym GA4 limit zarejestrowanych wymiarów niestandardowych wynosi **50** (w 360 rośnie do **125**). 
+        * **Dlaczego to MIĘKKA poszlaka:** Limit dotyczy *aktywnej rejestracji* w panelu admina, a nie samej wysyłki sieciowej. Kod strony może słać 70 unikalnych nazw parametrów, ale jeśli w panelu włączono tylko 30 z nich, witryna nadal poprawnie działa na darmowym GA4. Wykrycie $>50$ parametrów w pliku HAR oznacza potężne skomplikowanie analityczne i potrzebę licencji 360, ale pełną weryfikację daje dopiero audyt przez GA4 Admin API (`customDimensions.list`).
+        """)
+
+    with st.expander("2. Server-Side Tagging (Punkt zbiórki w domenie 1st-party)"):
         st.markdown("""
         * **Logika techniczna:** Agent sprawdza hosta w adresach URL żądań. Jeśli ruch nie idzie bezpośrednio do `analytics.google.com` ani `google-analytics.com`, lecz na subdomenę klienta (np. `analityka.sklep.pl/g/collect`), wykrywane jest rozwiązanie serwerowe.
         * **Uzasadnienie biznesowe:** Konfiguracja i utrzymanie Google Tag Manatela w wersji Server-Side wymaga stałego opłacania chmury (np. Google Cloud Platform). Przy dużym ruchu e-commerce to koszt rzędu tysięcy złotych miesięcznie. Firmy inwestujące w tak zaawansowaną infrastrukturę ochrony danych rzadko kiedy zostają przy limitowanym, darmowym GA4.
         """)
 
-    with st.expander("2. Korporacyjny Multi-tagging"):
+    with st.expander("3. Korporacyjny Multi-tagging"):
         st.markdown("""
         * **Logika techniczna:** Agent zlicza unikalne identyfikatory pomiaru w parametrach `tid=` (zaczynające się od `G-`).
         * **Uzasadnienie biznesowe:** Wysyłanie tych samych danych równolegle do kilku różnych kont GA4 charakteryzuje duże struktury holdingowe lub międzynarodowe (np. jeden tag dla rynku lokalnego, drugi zbiorczy dla globalnej centrali). Małe firmy unikają tej praktyki z powodu generowania chaosu i podwójnego zużycia zasobów.
         """)
 
-    with st.expander("3. Ekosystem Google Marketing Platform (Floodlight)"):
+    with st.expander("4. Ekosystem Google Marketing Platform (Floodlight)"):
         st.markdown("""
         * **Logika techniczna:** Agent analizuje żądania sieciowe kierowane do domeny `doubleclick.net` w poszukiwaniu tagów konwersji Floodlight (parametry typu `src=`, `type=`, `cat=`).
-        * **Uzasadnienie biznesowe:** Tagi Floodlight są natywnym elementem płatnego ekosystemu reklamowego korporacji (Campaign Manager 360, Display & Video 360, Search Ads 360). Ich obecność to jasny sygnał, że firma realizuje wielomilionowe budżety reklamowe w systemach programatycznych – co niemal w 95% przypadków idzie w parze z licencją GA360 w celu pełnej analityki omnichanelowej.
+        * **Uzasadnienie biznesowe:** Tagi Floodlight są natywnym elementem płatnego ekosystemu reklamowego korporacji (Campaign Manager 360, Display & Video 360, Search Ads 360). Its obecność to jasny sygnał, że firma realizuje wielomilionowe budżety reklamowe w systemach programatycznych – co niemal w 95% przypadków idzie w parze z licencją GA360 w celu pełnej analityki omnichanelowej.
         """)
