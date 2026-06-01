@@ -1,5 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
+import json
 
 # Konfiguracja głównej strony aplikacji
 st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="centered")
@@ -33,13 +34,38 @@ uploaded_file = st.file_uploader("Przeciągnij lub wybierz plik .har", type=['ha
 if uploaded_file is not None:
     with st.spinner('Agent "czyta" logi sieciowe... To zajmie od kilku do kilkunastu sekund (zależnie od wagi pliku).'):
         try:
-            # Dekodowanie pliku HAR do zwykłego tekstu
-            har_content = uploaded_file.getvalue().decode("utf-8")
+            # Dekodowanie i parsowanie pliku HAR
+            raw_har = uploaded_file.getvalue().decode("utf-8")
+            har_json = json.loads(raw_har)
+            
+            # Ekstrakcja TYLKO zapytań analitycznych i limit do 15 żądań
+            filtered_requests = []
+            for entry in har_json.get("log", {}).get("entries", []):
+                url = entry.get("request", {}).get("url", "")
+                
+                # Szukamy żądań do GA4 (collect)
+                if "collect" in url or "google-analytics" in url:
+                    filtered_requests.append({
+                        "url": url,
+                        "query_string": entry["request"].get("queryString", []),
+                        "post_data": entry["request"].get("postData", {}).get("text", "")
+                    })
+                
+                # TWARDA BLOKADA: Pobieramy tylko pierwsze 15 żądań, aby uniknąć limitu 429
+                if len(filtered_requests) >= 15:
+                    break
+            
+            # Zrzucenie odchudzonych danych do stringa, aby podać je modelowi
+            har_content = json.dumps(filtered_requests, indent=2)
+            
+            if not filtered_requests:
+                st.warning("⚠️ Nie znaleziono żadnych żądań do Google Analytics w tym pliku. Upewnij się, że strona wysyła zdarzenia analityczne i wygeneruj plik ponownie.")
+                st.stop()
 
             # --- PROMPT SYSTEMOWY DLA AGENTA ---
             system_prompt = """
-            Jesteś technicznym ekspertem web analityki. Otrzymujesz surowy plik HAR. 
-            Twoim zadaniem jest analiza żądań do '/collect' (Google Analytics 4) i ocena, czy strona korzysta z płatnej wersji GA360.
+            Jesteś technicznym ekspertem web analityki. Otrzymujesz wyciąg żądań JSON (żądania HTTP do Google Analytics). 
+            Twoim zadaniem jest analiza żądań i ocena, czy strona korzysta z płatnej wersji GA360.
 
             Zastosuj rygorystyczne reguły decyzyjne:
             1. TWARDA REGUŁA 1: Policz unikalne parametry 'ep.' oraz 'epn.' w jednym zdarzeniu. Jeśli jest ich >25 -> WERDYKT: GA 360 (100%).
