@@ -7,7 +7,11 @@ import re
 from urllib.parse import urlparse, parse_qs, unquote
 from playwright.sync_api import sync_playwright
 
+# --- Ta komenda wymusza na serwerze doinstalowanie fizycznej przeglądarki ---
+os.system("playwright install chromium")
+
 st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
+# ... (i dalej reszta Twojego kodu bez zmian) ...
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
