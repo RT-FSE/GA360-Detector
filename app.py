@@ -4,10 +4,10 @@ import os
 import pandas as pd
 import uuid 
 import re
+import base64
 from urllib.parse import urlparse, parse_qs, unquote, quote
 from playwright.sync_api import sync_playwright
 
-# Wymuszenie instalacji przeglądarki na chmurze Streamlit
 os.system("playwright install chromium")
 
 st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
@@ -39,7 +39,7 @@ else:
     glebokosc_skanowania = "N/A"
     tryb_headless = True
 
-# --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR (Naprawa błędu Chrome DevTools) ---
+# --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
     filtered_requests = []
     for entry in har_json.get("log", {}).get("entries", []):
@@ -50,7 +50,7 @@ def filtruj_logi_har(har_json):
             continue
         
         is_analytics = False
-        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track"]):
+        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track", "tag", "data"]):
             is_analytics = True
             
         query_string = entry.get("request", {}).get("queryString", [])
@@ -59,12 +59,16 @@ def filtruj_logi_har(har_json):
                 is_analytics = True
                 break
 
-        if not is_analytics:
-            continue
-            
         post_data_obj = entry.get("request", {}).get("postData", {})
         post_text = post_data_obj.get("text", "")
         
+        # POPRAWKA 2: Dekodowanie ukrytych payloadów (Base64)
+        if post_data_obj.get("encoding") == "base64" and post_text:
+            try:
+                post_text = base64.b64decode(post_text).decode('utf-8')
+            except Exception:
+                pass
+
         if not post_text and "params" in post_data_obj:
             reconstructed = []
             for p in post_data_obj["params"]:
@@ -72,6 +76,12 @@ def filtruj_logi_har(har_json):
                 v = p.get("value", "")
                 reconstructed.append(f"{quote(k)}={quote(v)}")
             post_text = "&".join(reconstructed)
+
+        if not is_analytics and post_text and ("tid=" in post_text or "en=" in post_text):
+            is_analytics = True
+
+        if not is_analytics:
+            continue
 
         filtered_requests.append({
             "url": original_url, 
@@ -120,7 +130,8 @@ def analizuj_lokalnie(requests_list, czysta_domena):
 
         post_text = req.get("post_data", "")
         if post_text:
-            for line in post_text.split('\r\n'):
+            # POPRAWKA 3: Zamiast sztywnego \r\n, używamy splitlines()
+            for line in post_text.splitlines():
                 line = line.strip()
                 if not line: continue
                 
@@ -137,7 +148,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
                     pass
                 
                 if not parsed_success:
-                    for match in re.findall(r'([a-zA-Z0-9_\.]+)=([^&\s;]+)', line):
+                    for match in re.findall(r'([a-zA-Z0-9_\.\-]+)=([^&\s;]+)', line):
                         event_params[match[0]] = match[1]
                     
                 wszystkie_zdarzenia.append({"url": original_url, "params": event_params})
@@ -182,7 +193,8 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             elif k.startswith("up.") or k.startswith("upn."):
                 current_event_up_count += 1
                 
-            match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cm|cp\.)([a-zA-Z0-9_]+)', k)
+            # POPRAWKA 1: Dodanie ep. do regexa, żeby łapać pr1ep.nazwa oraz myślniki
+            match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cm|cd|cg|cp\.|ep\.)([a-zA-Z0-9_\-\s]+)', k)
             if match_legacy_item:
                 product_idx = match_legacy_item.group(1)
                 custom_idx = match_legacy_item.group(2)
@@ -258,7 +270,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
         "verdict": werdykt,
         "confidence": pewnosc,
         "tid": full_tid_display,
-        "reason": f"Maks. custom item-scoped: {max_item_params}. Zmienne sesji ep.*: {len(globalne_ep_params)}."
+        "reason": f"Przeanalizowano {len(wszystkie_zdarzenia)} zdarzeń z plików HAR. Maksymalna l. custom item-scoped: {max_item_params}."
     }
     
     return f"{markdown_output}\n```json\n{json.dumps(json_payload, indent=2)}\n```"
@@ -315,7 +327,7 @@ with tab1:
 
     # --- TRYB 2: AUTOMAT PLAYWRIGHT ---
     elif tryb_pracy == "🤖 Automat (Playwright)":
-        st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokalny algorytm Pythona natychmiast sprawdzi 8 reguł.")
+        st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokal algorytm Pythona natychmiast sprawdzi 8 reguł.")
         domeny_input = st.text_area("Lista domen do sprawdzenia:", height=150, placeholder="renault.pl\nhttps://euro.com.pl/telefony/jakis-model.bhtml")
 
         if st.button("🚀 Uruchom Automata"):
@@ -439,7 +451,7 @@ with tab1:
                         if os.path.exists(temp_har_path):
                             os.remove(temp_har_path)
 
-    # --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
+    # --- TABELA ZBIORCZA ---
     if excel_data_rows:
         st.write("")
         st.subheader("📊 Zbiorcze Zestawienie Wyników")
