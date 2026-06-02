@@ -5,12 +5,12 @@ import re
 import base64
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
-st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
+st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", layout="wide")
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
-st.sidebar.markdown("**Wersja: 100% Lokalna (Analiza HAR)**")
-st.sidebar.info("Moduł automatyczny został wyłączony w celu zapewnienia maksymalnej dokładności danych. Używaj wyłącznie wgranych ręcznie z przeglądarki plików .har.")
+st.sidebar.markdown("**Wersja: 100% Lokalna analiza plików HAR**")
+st.sidebar.info("Używaj wyłącznie wygenerowanych z przeglądarki plików .har.")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
@@ -251,7 +251,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
 # ==========================================
 st.title("🕵️‍♂️ Detektyw GA360")
 
-tab1, tab2 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)"])
+tab1, tab2, tab3 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"])
 
 with tab1:
     excel_data_rows = []
@@ -311,5 +311,92 @@ with tab1:
 
 with tab2:
     st.title("📚 Baza Wiedzy Analitycznej & Biznesowej")
-    st.markdown("Dokumentacja logiczna reguł wbudowana prosto w silnik aplikacji.")
-    st.info("Wszystkie limity są twardo zakodowane w funkcjach filtrujących Pythona.")
+    st.markdown("Dokumentacja logiczna reguł wbudowana bezpośrednio w silnik weryfikacyjny detektywa.")
+    
+    st.subheader("🔴 Twarde Reguły i Limity (100% Pewności)")
+    
+    with st.expander("Reguła 1: Liczba parametrów niestandardowych w zdarzeniu (>25)"):
+        st.markdown("""
+        * **Tło techniczne:** W darmowej wersji Google Analytics 4 obowiązuje restrykcyjny limit **25 niestandardowych parametrów** przypisanych do jednego zdarzenia. Licencja korporacyjna **GA360 podnosi ten limit do 100**.
+        * **Logika detekcji:** Skrypt zlicza unikalne parametry z prefiksami `ep.` (tekstowe) oraz `epn.` (numeryczne) wewnątrz pojedynczego pinga sieciowego. Przekroczenie liczby 25 stanowi niezbity dowód na posiadanie usługi premium.
+        """)
+
+    with st.expander("Reguła 2: Maksymalna długość wartości parametru (>100 znaków)"):
+        st.markdown("""
+        * **Tło techniczne:** Standardowe GA4 automatycznie ucina wartości parametrów tekstowych (Custom Dimensions), jeśli przekraczają **100 znaków**. Wersja **GA360 pozwala na przechowywanie ciągów o długości do 500 znaków**. Jest to niezbędne przy zaawansowanym śledzeniu (np. pełne URLe, opisy błędów, zahaszowane identyfikatory).
+        * **Logika detekcji:** Silnik mierzy długość odkodowanych ciągów tekstowych parametrów niestandardowych. Zarejestrowanie wartości o długości 101 znaków lub większej automatycznie potwierdza licencję GA360.
+        """)
+
+    with st.expander("Reguła 3: Liczba właściwości użytkownika - User Properties (>25)"):
+        st.markdown("""
+        * **Tło techniczne:** Właściwości użytkownika służą do głębokiej segmentacji (np. poziom lojalności, status subskrypcji). Darmowe GA4 pozwala na rejestrację maksymalnie **25 User Properties na usługę**. Usługa **GA360 zwiększa ten próg do 100**.
+        * **Logika detekcji:** Filtrujemy parametry oznaczone prefiksem sieciowym `up.` oraz `upn.`. Przekroczenie liczby 25 unikalnych właściwości w jednym hicie aktywuje twardy werdykt.
+        """)
+
+    with st.expander("Reguła 4: Niestandardowe parametry produktu - Item-Scoped (>10)"):
+        st.markdown("""
+        * **Tło techniczne:** W darmowym GA4 do każdego przedmiotu w tablicy `items` (np. na liście produktów, w koszyku) można dopisać maksymalnie **10 niestandardowych wymiarów**. Wersja **GA360 rozszerza ten limit do 27 parametrów per produkt**.
+        * **Logika detekcji:** Analizujemy strukturę danych e-commerce. Jeśli pojedynczy produkt (niezależnie czy zapisany w nowym formacie `items.0...` czy legacy `pr1ep...`) zawiera więcej niż 10 niestandardowych cech (po wykluczeniu parametrów natywnych typu brand, price, id), system uruchamia twardy werdykt.
+        """)
+
+    st.write("")
+    st.subheader("🟡 Miękkie Poszlaki Kontekstowe (Analiza Biznesowa)")
+
+    with st.expander("Reguła 5: Łączna suma parametrów eventowych w sesji (>50)"):
+        st.markdown("""
+        * **Opis:** Łączny limit zarejestrowanych Custom Dimensions dla całej usługi w darmowej wersji wynosi 50, a w GA360 wynosi 125. Jeśli w trakcie jednej, krótkiej sesji zarejestrowanej w pliku HAR system naliczy łącznie ponad 50 unikalnych nazw parametrów `ep.*`, jest to potężna poszlaka wskazująca na budżet i architekturę klasy Enterprise.
+        """)
+
+    with st.expander("Reguła 6: Server-Side Tagging (SST)"):
+        st.markdown("""
+        * **Opis:** Przesyłanie logów przez niezależny serwer proxy w domenie 1st-party (np. `stat.sklep.pl`) zamiast bezpośrednio do domen Google. Konfiguracja SST wymaga płatnej infrastruktury w Google Cloud Platform (Cloud Run). Ze względu na koszty i złożoność techniczną, SST jest wdrażany prawie wyłącznie przez duże organizacje, które najczęściej posiadają również licencję GA360.
+        """)
+
+    with st.expander("Reguła 7: Korporacyjny Multi-tagging (Zbiory Roll-up)"):
+        st.markdown("""
+        * **Opis:** Wysyłanie identycznych pakietów danych jednocześnie do kilku różnych identyfikatorów pomiarowych (`tid` zaczynających się od `G-` lub `AW-`). Rozwiązanie to jest powszechnie stosowane w grupach kapitałowych i międzynarodowych e-commerce w celu agregacji danych lokalnych do jednej globalnej usługi centralnej.
+        """)
+
+    with st.expander("Reguła 8: Ekosystem Google Marketing Platform (GMP)"):
+        st.markdown("""
+        * **Opis:** Wykrycie w strumieniu sieciowym śladów zaawansowanych systemów reklamowych Google klasy premium (Campaign Manager 360, Display & Video 360, Search Ads 360). Objawia się to obecnością żądań do domen Doubleclick, wywołaniami skryptów Floodlight (`/activityi`), czy identyfikatorami z prefiksem `DC-`. Integracje te są natywną domeną płatnego pakietu GA360.
+        """)
+
+with tab3:
+    st.title("📥 Instrukcja Generowania Wartościowych Plików .HAR")
+    st.markdown("Aby algorytm matematyczny poprawnie przeanalizował strukturę danych i wykrył limity Google Analytics 360, plik logów sieciowych musi zostać wygenerowany zgodnie z poniższą procedurą. **Błędy na tym etapie uniemożliwią poprawną diagnozę.**")
+    
+    st.info("💡 **Analityczna wskazówka:** Co to jest plik .HAR? To kompletny zapis chronologiczny całej komunikacji sieciowej między Twoją przeglądarką a serwerami zewnętrznymi w trakcie trwania sesji.")
+    
+    st.markdown("""
+    ### 🛠️ Instrukcja Krok po Kroku dla Konsultantów i Handlowców:
+    
+    #### 1️⃣ Krok 1: Przygotowanie czystego środowiska (Tryb Incognito)
+    * Zawsze otwieraj badany serwis w **nowym oknie incognito** przeglądarki (`Ctrl+Shift+N` na Windows lub `Cmd+Shift+N` na Mac).
+    * *Dlaczego?* Pozwala to całkowicie ominąć pliki cookie zapisane w pamięci podręcznej (cache). Dzięki temu wymusisz na stronie ponowne wyświetlenie baneru prywatności oraz pełne załadowanie wszystkich skryptów inicjujących od zera.
+    
+    #### 2️⃣ Krok 2: Uruchomienie zakładki Network w DevTools
+    * Wejdź na stronę główną witryny, kliknij klawisz **F12** (lub kliknij prawym przyciskiem myszy w dowolnym miejscu i wybierz **Zbadaj**).
+    * Przejdź do górnej zakładki **Network** (Sieć).
+    
+    #### 3️⃣ Krok 3: Konfiguracja pancernego nagrywania (Preserve Log)
+    * Upewnij się, że okrągła ikona nagrywania w lewym górnym rogu DevTools świeci się na **czerwono** (oznacza to, że ruch jest rejestrowany).
+    * ⚠️ **NAJWAŻNIEJSZY ELEMENT:** Bezwzględnie zaznacz checkbox **"Preserve log"** (Zachowaj logi). Jeśli tego nie zrobisz, w momencie przejścia ze strony głównej na kartę produktu przeglądarka wyczyści dotychczas zebrany ruch sieciowy i stracisz kluczowe dane startowe!
+    
+    #### 4️⃣ Krok 4: KROK KRYTYCZNY – Pełna akceptacja Cookies
+    * Odśwież stronę (`F5`). Poczekaj na pojawienie się baneru zarządzania prywatnością (CMP).
+    * **Kliknij przycisk pełnej akceptacji wszystkich zgód marketingowych i analitycznych** (szukaj fraz: *'Akceptuję wszystko'*, *'Zgadzam się'*, *'Akceptuj wszystkie cookies'*).
+    * *Dlaczego to ważne?* Jeśli zamkniesz baner krzyżykiem lub odrzucisz zgody, witryna przejdzie w restrykcyjny tryb **Consent Mode**. W tym trybie tagi reklamowe i zaawansowana analityka e-commerce zostaną całkowicie zablokowane przez przeglądarkę, a nasz detektyw doliczy się 0 zdarzeń!
+    
+    #### 5️⃣ Krok 5: Przejście pełnej ścieżki e-commerce
+    * Nie kończ nagrywania na stronie głównej. Kliknij w dowolny produkt i przejdź na **kartę produktu**.
+    * **Przescrolluj kartę produktu powoli do samego dołu.** Wiele nowoczesnych systemów stosuje mechanizm *lazy-loadingu* i odpala bogate skrypty analityczne (w tym customowe parametry produktu) dopiero wtedy, gdy użytkownik fizycznie dotrze ekranem do konkretnych sekcji strony.
+    * Opcjonalnie: Dodaj produkt do koszyka lub skorzystaj z wyszukiwarki wewnętrznej. Im więcej zdarzeń wygenerujesz, tym więcej twardych dowodów dostarczysz do analizatora.
+    
+    #### 6️⃣ Krok 6: Eksport pliku .HAR
+    * Po zakończeniu ścieżki kliknij **prawym przyciskiem myszy** w dowolnym miejscu na liście zarejestrowanych żądań sieciowych w panelu DevTools.
+    * Wybierz opcję **"Save all as HAR with content"** (Zapisz wszystko jako HAR z zawartością).
+    * Zapisz plik na dysku, a następnie wgraj go w polu analizatora w aplikacji.
+    """)
+    
+    st.success("🎯 Gotowe! Tak przygotowany plik HAR gwarantuje 100% precyzji w wykrywaniu systemów klasy enterprise.")
