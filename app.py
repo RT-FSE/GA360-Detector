@@ -8,7 +8,12 @@ import base64
 from urllib.parse import urlparse, parse_qs, unquote, quote
 from playwright.sync_api import sync_playwright
 
-os.system("playwright install chromium")
+# --- Wymuszenie instalacji przeglądarki na chmurze Streamlit (Pancerny wariant) ---
+@st.cache_resource
+def install_playwright():
+    os.system("python -m playwright install chromium")
+
+install_playwright()
 
 st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
 
@@ -62,7 +67,7 @@ def filtruj_logi_har(har_json):
         post_data_obj = entry.get("request", {}).get("postData", {})
         post_text = post_data_obj.get("text", "")
         
-        # POPRAWKA 2: Dekodowanie ukrytych payloadów (Base64)
+        # Dekodowanie ukrytych payloadów (Base64)
         if post_data_obj.get("encoding") == "base64" and post_text:
             try:
                 post_text = base64.b64decode(post_text).decode('utf-8')
@@ -130,7 +135,6 @@ def analizuj_lokalnie(requests_list, czysta_domena):
 
         post_text = req.get("post_data", "")
         if post_text:
-            # POPRAWKA 3: Zamiast sztywnego \r\n, używamy splitlines()
             for line in post_text.splitlines():
                 line = line.strip()
                 if not line: continue
@@ -193,7 +197,6 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             elif k.startswith("up.") or k.startswith("upn."):
                 current_event_up_count += 1
                 
-            # POPRAWKA 1: Dodanie ep. do regexa, żeby łapać pr1ep.nazwa oraz myślniki
             match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cm|cd|cg|cp\.|ep\.)([a-zA-Z0-9_\-\s]+)', k)
             if match_legacy_item:
                 product_idx = match_legacy_item.group(1)
@@ -327,7 +330,7 @@ with tab1:
 
     # --- TRYB 2: AUTOMAT PLAYWRIGHT ---
     elif tryb_pracy == "🤖 Automat (Playwright)":
-        st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokal algorytm Pythona natychmiast sprawdzi 8 reguł.")
+        st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokalny algorytm Pythona natychmiast sprawdzi 8 reguł.")
         domeny_input = st.text_area("Lista domen do sprawdzenia:", height=150, placeholder="renault.pl\nhttps://euro.com.pl/telefony/jakis-model.bhtml")
 
         if st.button("🚀 Uruchom Automata"):
@@ -367,7 +370,8 @@ with tab1:
                                         try:
                                             cookie_selectors = [
                                                 "button:has-text('W porządku')", "button:has-text('Zaakceptuj wszystko')", 
-                                                "button:has-text('Akceptuję')", "button:has-text('Allow all')"
+                                                "button:has-text('Akceptuję')", "button:has-text('Allow all')",
+                                                "button:has-text('Zgadzam się')", "button:has-text('Zaakceptuj')"
                                             ]
                                             full_selector = ", ".join(cookie_selectors)
                                             visible_cookie_btn = page.locator(full_selector).filter(visible=True).first
