@@ -445,4 +445,21 @@ with tab1:
                             os.remove(temp_har_path)
 
     # --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
-    if excel_data
+    if excel_data_rows:
+        st.write("")
+        st.subheader("📊 Zbiorcze Zestawienie Wyników")
+        df = pd.DataFrame(excel_data_rows)
+        st.dataframe(df, use_container_width=True)
+        
+        csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
+        st.download_button(
+            label="📥 Pobierz raport CSV",
+            data=csv_data,
+            file_name="Raport_GA360.csv",
+            mime="text/csv"
+        )
+
+with tab2:
+    st.title("📚 Baza Wiedzy Analitycznej & Biznesowej")
+    st.markdown("Dokumentacja logiczna reguł wbudowana prosto w silnik aplikacji.")
+    st.info("Wszystkie limity są twardo zakodowane w funkcjach filtrujących Pythona.")
