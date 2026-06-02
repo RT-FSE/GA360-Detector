@@ -444,7 +444,7 @@ with tab1:
                         if os.path.exists(temp_har_path):
                             os.remove(temp_har_path)
 
-    # --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
+# --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
     if excel_data_rows:
         st.write("")
         st.subheader("📊 Zbiorcze Zestawienie Wyników")
