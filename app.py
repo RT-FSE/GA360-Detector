@@ -46,16 +46,13 @@ def filtruj_logi_har(har_json):
         original_url = entry.get("request", {}).get("url", "")
         url_lower = original_url.lower()
         
-        # Odrzucamy typowe śmieci graficzne i skrypty
         if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".svg", ".gif"]):
             continue
         
-        # Poszerzony filtr SGTM
         is_analytics = False
         if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track"]):
             is_analytics = True
             
-        # Zabezpieczenie: Szukamy TID lub v=2 w parametrach URL nawet jak domena jest nietypowa
         query_string = entry.get("request", {}).get("queryString", [])
         for q in query_string:
             if q.get("name") in ["tid", "v", "en"]:
@@ -68,7 +65,6 @@ def filtruj_logi_har(har_json):
         post_data_obj = entry.get("request", {}).get("postData", {})
         post_text = post_data_obj.get("text", "")
         
-        # KRYTYCZNA POPRAWKA: Rekonstrukcja ukrytych payloadów z Chrome DevTools
         if not post_text and "params" in post_data_obj:
             reconstructed = []
             for p in post_data_obj["params"]:
@@ -186,7 +182,6 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             elif k.startswith("up.") or k.startswith("upn."):
                 current_event_up_count += 1
                 
-            # Usprawniony Regex dla Custom Metrics (cm) i Custom Dimensions (k)
             match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cm|cp\.)([a-zA-Z0-9_]+)', k)
             if match_legacy_item:
                 product_idx = match_legacy_item.group(1)
@@ -444,7 +439,7 @@ with tab1:
                         if os.path.exists(temp_har_path):
                             os.remove(temp_har_path)
 
-# --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
+    # --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
     if excel_data_rows:
         st.write("")
         st.subheader("📊 Zbiorcze Zestawienie Wyników")
