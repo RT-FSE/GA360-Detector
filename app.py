@@ -4,14 +4,13 @@ import os
 import pandas as pd
 import uuid 
 import re
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, quote
 from playwright.sync_api import sync_playwright
 
-# --- Ta komenda wymusza na serwerze doinstalowanie fizycznej przeglądarki ---
+# Wymuszenie instalacji przeglądarki na chmurze Streamlit
 os.system("playwright install chromium")
 
 st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
-# ... (i dalej reszta Twojego kodu bez zmian) ...
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
@@ -25,7 +24,6 @@ tryb_pracy = st.sidebar.radio(
 
 st.sidebar.write("---")
 
-# Opcje widoczne tylko dla automatu
 if tryb_pracy == "🤖 Automat (Playwright)":
     glebokosc_skanowania = st.sidebar.radio(
         "Głębokość skanowania automatu:",
@@ -41,22 +39,49 @@ else:
     glebokosc_skanowania = "N/A"
     tryb_headless = True
 
-# --- FUNKCJA WSPÓLNA: FILTROWANIE HAR ---
+# --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR (Naprawa błędu Chrome DevTools) ---
 def filtruj_logi_har(har_json):
     filtered_requests = []
     for entry in har_json.get("log", {}).get("entries", []):
         original_url = entry.get("request", {}).get("url", "")
         url_lower = original_url.lower()
         
-        if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf"]):
+        # Odrzucamy typowe śmieci graficzne i skrypty
+        if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".svg", ".gif"]):
             continue
         
-        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm"]):
-            filtered_requests.append({
-                "url": original_url, 
-                "query_string": entry["request"].get("queryString", []),
-                "post_data": entry["request"].get("postData", {}).get("text", "")
-            })
+        # Poszerzony filtr SGTM
+        is_analytics = False
+        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track"]):
+            is_analytics = True
+            
+        # Zabezpieczenie: Szukamy TID lub v=2 w parametrach URL nawet jak domena jest nietypowa
+        query_string = entry.get("request", {}).get("queryString", [])
+        for q in query_string:
+            if q.get("name") in ["tid", "v", "en"]:
+                is_analytics = True
+                break
+
+        if not is_analytics:
+            continue
+            
+        post_data_obj = entry.get("request", {}).get("postData", {})
+        post_text = post_data_obj.get("text", "")
+        
+        # KRYTYCZNA POPRAWKA: Rekonstrukcja ukrytych payloadów z Chrome DevTools
+        if not post_text and "params" in post_data_obj:
+            reconstructed = []
+            for p in post_data_obj["params"]:
+                k = p.get("name", "")
+                v = p.get("value", "")
+                reconstructed.append(f"{quote(k)}={quote(v)}")
+            post_text = "&".join(reconstructed)
+
+        filtered_requests.append({
+            "url": original_url, 
+            "query_string": query_string,
+            "post_data": post_text
+        })
     return filtered_requests
 
 # ==========================================
@@ -80,7 +105,6 @@ def analizuj_lokalnie(requests_list, czysta_domena):
     ]
     wszystkie_zdarzenia = []
 
-    # 1. PARSOWANIE I IZOLACJA ZDARZEŃ
     for req in requests_list:
         original_url = req.get("url", "")
         parsed_url = urlparse(original_url)
@@ -125,7 +149,6 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             if base_params:
                 wszystkie_zdarzenia.append({"url": original_url, "params": base_params})
 
-    # 2. EWALUACJA ZDARZEŃ
     for event in wszystkie_zdarzenia:
         params = event["params"]
         original_url = event["url"]
@@ -163,7 +186,8 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             elif k.startswith("up.") or k.startswith("upn."):
                 current_event_up_count += 1
                 
-            match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cp\.)([a-zA-Z0-9_]+)', k)
+            # Usprawniony Regex dla Custom Metrics (cm) i Custom Dimensions (k)
+            match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cm|cp\.)([a-zA-Z0-9_]+)', k)
             if match_legacy_item:
                 product_idx = match_legacy_item.group(1)
                 custom_idx = match_legacy_item.group(2)
@@ -171,7 +195,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
                     custom_item_params_per_product[product_idx] = set()
                 custom_item_params_per_product[product_idx].add(custom_idx)
             else:
-                match_ga4_mp_item = re.match(r'^items\.(\d+)\.(?!item_id|item_name|item_brand|item_category|price|quantity|item_variant|promotion_name|promotion_id|coupon)(.+)', k)
+                match_ga4_mp_item = re.match(r'^items\.(\d+)\.(?!item_id|item_name|item_brand|item_category|price|quantity|item_variant|promotion_name|promotion_id|coupon|discount|index|affiliation)(.+)', k)
                 if match_ga4_mp_item:
                     product_idx = match_ga4_mp_item.group(1)
                     param_key = match_ga4_mp_item.group(2)
@@ -185,7 +209,6 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             current_max_items = max(len(v) for v in custom_item_params_per_product.values())
             max_item_params = max(max_item_params, current_max_items)
 
-    # 3. ZERO-JEDYNKOWA LOGIKA WERDYKTU
     r1 = "[✅]" if max_ep_per_event > 25 else "[❌]"
     r2 = "[✅]" if max_custom_param_len > 100 else "[❌]"
     r3 = "[✅]" if max_up_per_event > 25 else "[❌]"
@@ -272,7 +295,7 @@ with tab1:
                         filtered_requests = filtruj_logi_har(har_data)
                         
                         if not filtered_requests:
-                            st.warning("Brak skryptów GA4/GMP w tym pliku HAR.")
+                            st.warning("Brak skryptów GA4/GMP w tym pliku HAR. Pamiętaj, aby plik był poprawnie nagrany.")
                         else:
                             czysta_domena = domena_docelowa.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
                             response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
@@ -422,21 +445,4 @@ with tab1:
                             os.remove(temp_har_path)
 
     # --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
-    if excel_data_rows:
-        st.write("")
-        st.subheader("📊 Zbiorcze Zestawienie Wyników")
-        df = pd.DataFrame(excel_data_rows)
-        st.dataframe(df, use_container_width=True)
-        
-        csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
-        st.download_button(
-            label="📥 Pobierz raport CSV",
-            data=csv_data,
-            file_name="Raport_GA360.csv",
-            mime="text/csv"
-        )
-
-with tab2:
-    st.title("📚 Baza Wiedzy Analitycznej & Biznesowej")
-    st.markdown("Dokumentacja logiczna reguł wbudowana prosto w silnik aplikacji.")
-    st.info("Wszystkie limity są twardo zakodowane w funkcjach filtrujących Pythona.")
+    if excel_data
