@@ -6,7 +6,6 @@ libxcursor1
 libxdamage1
 libxi6
 libxtst6
-libnss3
 libxrandr2
 libasound2
 libpangocairo-1.0-0
