@@ -1,192 +1,438 @@
 import streamlit as st
-import google.generativeai as genai
 import json
+import os
+import pandas as pd
+import uuid 
+import re
+from urllib.parse import urlparse, parse_qs, unquote
+from playwright.sync_api import sync_playwright
 
-# Konfiguracja głównej strony aplikacji
-st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="centered")
+st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
 
-# --- BRAMKA BEZPIECZEŃSTWA ---
-# Zmień to hasło na własne, które podasz zespołowi
-HASLO_DOSTEPOWE = "CheckGA4me!" 
+# --- PANEL BOCZNY (SIDEBAR) ---
+st.sidebar.title("⚙️ Tryb Pracy Agenta")
+st.sidebar.markdown("**Wersja: 100% Lokalna / Chmurowa**")
 
-wpisane_haslo = st.text_input("Wpisz hasło dostępowe zespołu:", type="password")
+tryb_pracy = st.sidebar.radio(
+    "Wybierz metodę wprowadzania danych:",
+    options=["📥 Wgraj własny plik (.HAR)", "🤖 Automat (Playwright)"],
+    help="Użyj uploadu .HAR, jeśli strona blokuje automatyczne boty lub działasz na serwerze chmurowym."
+)
 
-if wpisane_haslo != HASLO_DOSTEPOWE:
-    st.warning("🔒 Podaj prawidłowe hasło, aby uzyskać dostęp do narzędzia.")
-    st.stop() # Blokuje wykonanie reszty kodu, jeśli hasło jest błędne
+st.sidebar.write("---")
 
-# --- KONFIGURACJA API GEMINI ---
-try:
-    # Pobieranie klucza z zakładek "Secrets" w Streamlit Cloud
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # Używamy najnowszego modelu 3.5 Flash
-    model = genai.GenerativeModel('gemini-3.5-flash')
-except KeyError:
-    st.error("❌ Błąd: Brak klucza API. Skonfiguruj 'GEMINI_API_KEY' w zakładce Secrets na Streamlit Cloud.")
-    st.stop()
+# Opcje widoczne tylko dla automatu
+if tryb_pracy == "🤖 Automat (Playwright)":
+    glebokosc_skanowania = st.sidebar.radio(
+        "Głębokość skanowania automatu:",
+        options=["Szybka (Strona główna)", "Pełna (Ścieżka e-commerce)"],
+        index=1
+    )
+    tryb_headless = st.sidebar.checkbox(
+        "Tryb serwerowy (Headless)", 
+        value=True, 
+        help="Zaznacz, jeśli aplikacja działa na zewnętrznym serwerze (np. Streamlit Cloud)."
+    )
+else:
+    glebokosc_skanowania = "N/A"
+    tryb_headless = True
 
-# --- PODZIAŁ NA ZAKŁADKI (NAWIGACJA) ---
-tab1, tab2 = st.tabs(["🕵️‍♂️ Detektyw GA360", "📚 Sekcja Edukacyjna (EDU)"])
+# --- FUNKCJA WSPÓLNA: FILTROWANIE HAR ---
+def filtruj_logi_har(har_json):
+    filtered_requests = []
+    for entry in har_json.get("log", {}).get("entries", []):
+        original_url = entry.get("request", {}).get("url", "")
+        url_lower = original_url.lower()
+        
+        if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf"]):
+            continue
+        
+        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm"]):
+            filtered_requests.append({
+                "url": original_url, 
+                "query_string": entry["request"].get("queryString", []),
+                "post_data": entry["request"].get("postData", {}).get("text", "")
+            })
+    return filtered_requests
 
 # ==========================================
-# ZAKŁADKA 1: NARZĘDZIE ANALITYCZNE
+# SILNIK LOKALNEJ ANALIZY
 # ==========================================
+def analizuj_lokalnie(requests_list, czysta_domena):
+    max_ep_per_event = 0
+    max_custom_param_len = 0
+    max_up_per_event = 0
+    max_item_params = 0
+    globalne_ep_params = set()
+    wykryte_ga4_tids = set()
+    wykryte_ads_tids = set()
+    server_side_domain = "Nie"
+    gmp_detected = "Nie"
+    
+    native_excludes = [
+        "page_title", "page_location", "page_referrer", "page_path",
+        "search_term", "content_group", "campaign", "source", "medium", 
+        "term", "content"
+    ]
+    wszystkie_zdarzenia = []
+
+    # 1. PARSOWANIE I IZOLACJA ZDARZEŃ
+    for req in requests_list:
+        original_url = req.get("url", "")
+        parsed_url = urlparse(original_url)
+        hostname = parsed_url.hostname or ""
+        
+        if czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
+            server_side_domain = hostname
+            
+        if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net"]) or "g.doubleclick" in original_url.lower() or "/ddm/activity/" in original_url.lower():
+            gmp_detected = "Tak"
+            
+        base_params = {}
+        for q in req.get("query_string", []):
+            name = q.get("name")
+            value = q.get("value", "")
+            if name: base_params[name] = value
+
+        post_text = req.get("post_data", "")
+        if post_text:
+            for line in post_text.split('\r\n'):
+                line = line.strip()
+                if not line: continue
+                
+                event_params = base_params.copy()
+                parsed_success = False
+                
+                try:
+                    parsed_post = parse_qs(line, keep_blank_values=False)
+                    if parsed_post:
+                        for k, v in parsed_post.items():
+                            if v: event_params[k] = v[0]
+                        parsed_success = True
+                except Exception:
+                    pass
+                
+                if not parsed_success:
+                    for match in re.findall(r'([a-zA-Z0-9_\.]+)=([^&\s;]+)', line):
+                        event_params[match[0]] = match[1]
+                    
+                wszystkie_zdarzenia.append({"url": original_url, "params": event_params})
+        else:
+            if base_params:
+                wszystkie_zdarzenia.append({"url": original_url, "params": base_params})
+
+    # 2. EWALUACJA ZDARZEŃ
+    for event in wszystkie_zdarzenia:
+        params = event["params"]
+        original_url = event["url"]
+        
+        if "tid" in params and params["tid"]:
+            tid_val = str(params["tid"]).upper()
+            if tid_val.startswith("G-"):
+                wykryte_ga4_tids.add(tid_val)
+            elif tid_val.startswith("AW-"):
+                wykryte_ads_tids.add(tid_val)
+        else:
+            tid_match_ga4 = re.search(r'tid=(G-[A-Z0-9]+)', original_url, re.IGNORECASE)
+            if tid_match_ga4: 
+                wykryte_ga4_tids.add(tid_match_ga4.group(1).upper())
+                
+            tid_match_aw = re.search(r'tid=(AW-[A-Z0-9\-]+)', original_url, re.IGNORECASE)
+            if tid_match_aw:
+                wykryte_ads_tids.add(tid_match_aw.group(1).upper())
+
+        current_event_ep_count = 0
+        current_event_up_count = 0
+        custom_item_params_per_product = {}
+        
+        for k, v in params.items():
+            val_str = unquote(str(v))
+            
+            if k.startswith("ep.") or k.startswith("epn."):
+                current_event_ep_count += 1
+                param_name_clean = k.replace("ep.", "").replace("epn.", "")
+                globalne_ep_params.add(param_name_clean)
+                
+                if param_name_clean not in native_excludes:
+                    max_custom_param_len = max(max_custom_param_len, len(val_str))
+                    
+            elif k.startswith("up.") or k.startswith("upn."):
+                current_event_up_count += 1
+                
+            match_legacy_item = re.match(r'^(?:pr|pi)(\d+)(?:k|cp\.)([a-zA-Z0-9_]+)', k)
+            if match_legacy_item:
+                product_idx = match_legacy_item.group(1)
+                custom_idx = match_legacy_item.group(2)
+                if product_idx not in custom_item_params_per_product:
+                    custom_item_params_per_product[product_idx] = set()
+                custom_item_params_per_product[product_idx].add(custom_idx)
+            else:
+                match_ga4_mp_item = re.match(r'^items\.(\d+)\.(?!item_id|item_name|item_brand|item_category|price|quantity|item_variant|promotion_name|promotion_id|coupon)(.+)', k)
+                if match_ga4_mp_item:
+                    product_idx = match_ga4_mp_item.group(1)
+                    param_key = match_ga4_mp_item.group(2)
+                    if product_idx not in custom_item_params_per_product:
+                        custom_item_params_per_product[product_idx] = set()
+                    custom_item_params_per_product[product_idx].add(param_key)
+
+        max_ep_per_event = max(max_ep_per_event, current_event_ep_count)
+        max_up_per_event = max(max_up_per_event, current_event_up_count)
+        if custom_item_params_per_product:
+            current_max_items = max(len(v) for v in custom_item_params_per_product.values())
+            max_item_params = max(max_item_params, current_max_items)
+
+    # 3. ZERO-JEDYNKOWA LOGIKA WERDYKTU
+    r1 = "[✅]" if max_ep_per_event > 25 else "[❌]"
+    r2 = "[✅]" if max_custom_param_len > 100 else "[❌]"
+    r3 = "[✅]" if max_up_per_event > 25 else "[❌]"
+    r4 = "[✅]" if max_item_params > 10 else "[❌]"
+    
+    r5 = "[✅]" if len(globalne_ep_params) > 50 else "[❌]"
+    r6 = "[✅]" if server_side_domain != "Nie" else "[❌]"
+    r7 = "[✅]" if len(wykryte_ga4_tids) > 1 else "[❌]"
+    r8 = "[✅]" if gmp_detected == "Tak" else "[❌]"
+    
+    twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
+    miekkie_poszlaki_licznik = sum([1 for r in [r5, r6, r7, r8] if r == "[✅]"])
+    
+    if twarda_regula_zlamana:
+        werdykt = "GA 360"
+        pewnosc = "100%"
+    elif r5 == "[✅]" or miekkie_poszlaki_licznik >= 2:
+        werdykt = "Prawdopodobnie GA 360"
+        pewnosc = "75%"
+    elif miekkie_poszlaki_licznik == 1:
+        werdykt = "Darmowe GA4"
+        pewnosc = "80%" 
+    else:
+        werdykt = "Darmowe GA4"
+        pewnosc = "95%"
+
+    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak GA4"
+    tid_ads_display = f" (+ Ads: {', '.join(list(wykryte_ads_tids))})" if wykryte_ads_tids else ""
+    full_tid_display = tid_ga4_display + tid_ads_display
+
+    markdown_output = f"""
+### 📊 Wynik analizy Google Analytics dla domeny {czysta_domena}
+* **WERDYKT:** {werdykt}
+* **PEWNOŚĆ:** {pewnosc}
+* **Wykryte Measurement ID (tid):** `{full_tid_display}`
+
+---
+### 📋 Kontrola Reguł Analitycznych
+
+| Stan | Typ reguły | Reguła walidacyjna / Limit | Wynik analizy sieciowej |
+| :---: | :--- | :--- | :--- |
+| {r1} | Krytyczna (Twarda) | Liczba parametrów > 25 w evencie | Wykryto maks: {max_ep_per_event} |
+| {r2} | Krytyczna (Twarda) | Długość wartości parametru custom > 100 znaków | Najdłuższy niestandardowy: {max_custom_param_len} znaków |
+| {r3} | Krytyczna (Twarda) | Właściwości użytkownika (User Properties) > 25 | Wykryto maks: {max_up_per_event} |
+| {r4} | Krytyczna (Twarda) | Niestandardowe parametry produktu (item-scoped) > 10 | Wykryto maks: {max_item_params} w jednym produkcie |
+| {r5} | Kontekstowa (Miękka) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
+| {r6} | Kontekstowa (Miękka) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
+| {r7} | Kontekstowa (Miękka) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
+| {r8} | Kontekstowa (Miękka) | Ekosystem Google Marketing Platform | Wykryto tagi Floodlight / DoubleClick: {gmp_detected} |
+"""
+    json_payload = {
+        "verdict": werdykt,
+        "confidence": pewnosc,
+        "tid": full_tid_display,
+        "reason": f"Maks. custom item-scoped: {max_item_params}. Zmienne sesji ep.*: {len(globalne_ep_params)}."
+    }
+    
+    return f"{markdown_output}\n```json\n{json.dumps(json_payload, indent=2)}\n```"
+
+# ==========================================
+# INTERFEJS UŻYTKOWNIKA
+# ==========================================
+st.title("🕵️‍♂️ Detektyw GA360")
+
+tab1, tab2 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)"])
+
 with tab1:
-    st.title("🕵️‍♂️ Detektyw Google Analytics 360")
-    st.markdown("Wgraj plik **.har** (HTTP Archive) wyeksportowany z zakładki Network w przeglądarce. Agent przeanalizuje logi pod kątem limitów wskazujących na licencję Enterprise.")
+    excel_data_rows = []
 
-    uploaded_file = st.file_uploader("Przeciągnij lub wybierz plik .har", type=['har'])
+    # --- TRYB 1: UPLOAD HAR ---
+    if tryb_pracy == "📥 Wgraj własny plik (.HAR)":
+        st.markdown("Wyeksportuj plik `.har` ze swojej przeglądarki (Zakładka Network w DevTools) i wgraj go poniżej.")
+        
+        domena_docelowa = st.text_input("Główna domena badanego sklepu (np. euro.com.pl):", help="Potrzebne do poprawnego zbadania Server-Side Taggingu.")
+        wgrany_plik = st.file_uploader("Wybierz plik .har", type=["har"])
+        
+        if st.button("🔍 Analizuj wgrany plik"):
+            if not domena_docelowa:
+                st.error("Proszę wpisać domenę sklepu przed analizą.")
+            elif wgrany_plik is not None:
+                with st.spinner("Analiza struktury HAR..."):
+                    try:
+                        har_data = json.load(wgrany_plik)
+                        filtered_requests = filtruj_logi_har(har_data)
+                        
+                        if not filtered_requests:
+                            st.warning("Brak skryptów GA4/GMP w tym pliku HAR.")
+                        else:
+                            czysta_domena = domena_docelowa.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
+                            response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
+                            
+                            st.success("Analiza lokalna ukończona!")
+                            parts = response_text.split("```json")
+                            st.markdown(parts[0])
+                            
+                            if len(parts) > 1:
+                                extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                excel_data_rows.append({
+                                    "Domena": czysta_domena,
+                                    "Werdykt końcowy": extracted_json.get("verdict"),
+                                    "Poziom pewności": extracted_json.get("confidence"),
+                                    "Identyfikator usługi (TID)": extracted_json.get("tid"),
+                                    "Kluczowe uzasadnienie": extracted_json.get("reason")
+                                })
+                    except Exception as e:
+                        st.error(f"Błąd odczytu pliku: {e}")
+            else:
+                st.warning("Najpierw wgraj plik .har.")
 
-    if uploaded_file is not None:
-        with st.spinner('Agent "czyta" logi sieciowe... To zajmie od kilku do kilkunastu sekund (zależnie od wagi pliku).'):
-            try:
-                # Dekodowanie i parsowanie pliku HAR
-                raw_har = uploaded_file.getvalue().decode("utf-8")
-                har_json = json.loads(raw_har)
+    # --- TRYB 2: AUTOMAT PLAYWRIGHT ---
+    elif tryb_pracy == "🤖 Automat (Playwright)":
+        st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokalny algorytm Pythona natychmiast sprawdzi 8 reguł.")
+        domeny_input = st.text_area("Lista domen do sprawdzenia:", height=150, placeholder="renault.pl\nhttps://euro.com.pl/telefony/jakis-model.bhtml")
+
+        if st.button("🚀 Uruchom Automata"):
+            if not domeny_input.strip():
+                st.error("Wpisz przynajmniej jedną domenę!")
+                st.stop()
                 
-                # Ekstrakcja zapytań analitycznych oraz marketingowych Enterprise (DoubleClick/Floodlight)
-                filtered_requests = []
-                for entry in har_json.get("log", {}).get("entries", []):
-                    url = entry.get("request", {}).get("url", "")
-                    
-                    # Łapiemy GA4 ORAZ systemy DoubleClick/Floodlight/GMP
-                    if "collect" in url or "google-analytics" in url or "doubleclick" in url:
-                        filtered_requests.append({
-                            "url": url,
-                            "query_string": entry["request"].get("queryString", []),
-                            "post_data": entry["request"].get("postData", {}).get("text", "")
-                        })
-                    
-                    # TWARDA BLOKADA: Pobieramy tylko pierwsze 25 żądań (ochrona przed 429)
-                    if len(filtered_requests) >= 25:
-                        break
+            domeny = [d.strip() for d in domeny_input.split("\n") if d.strip()]
+            
+            for domena in domeny:
+                oryginalny_url = domena.replace(" ", "")
+                url_do_otwarcia = oryginalny_url if oryginalny_url.startswith("http") else f"https://{oryginalny_url}"
+                czysta_domena = oryginalny_url.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
                 
-                # Zrzucenie odchudzonych danych do stringa, aby podać je modelowi
-                har_content = json.dumps(filtered_requests, indent=2)
+                unique_id = uuid.uuid4().hex[:8]
+                temp_har_path = f"temp_{czysta_domena}_{unique_id}.har"
                 
-                if not filtered_requests:
-                    st.warning("⚠️ Nie znaleziono żadnych żądań do Google Analytics ani Google Marketing Platform w tym pliku.")
-                    st.stop()
+                with st.expander(f"🌐 Zobacz raport dla: {czysta_domena}", expanded=True):
+                    try:
+                        with st.spinner("Pobieranie ruchu sieciowego (Playwright)..."):
+                            try:
+                                with sync_playwright() as p:
+                                    browser = p.chromium.launch(headless=tryb_headless)
+                                    context = browser.new_context(
+                                        record_har_path=temp_har_path, 
+                                        ignore_https_errors=True,
+                                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                                    )
+                                    page = context.new_page()
+                                    
+                                    try:
+                                        page.set_default_navigation_timeout(25000) 
+                                        page.set_default_timeout(10000)            
+                                        page.goto(url_do_otwarcia, wait_until="load")
+                                        page.wait_for_timeout(3000)
+                                        
+                                        try:
+                                            cookie_selectors = [
+                                                "button:has-text('W porządku')", "button:has-text('Zaakceptuj wszystko')", 
+                                                "button:has-text('Akceptuję')", "button:has-text('Allow all')"
+                                            ]
+                                            full_selector = ", ".join(cookie_selectors)
+                                            visible_cookie_btn = page.locator(full_selector).filter(visible=True).first
+                                            if visible_cookie_btn.count() > 0:
+                                                visible_cookie_btn.click(timeout=4000)
+                                                page.wait_for_timeout(2000)
+                                        except Exception:
+                                            pass
+                                        
+                                        if "Pełna" in glebokosc_skanowania:
+                                            try:
+                                                search_input = page.locator("input[type='search'], input[name*='search'], input[placeholder*='szukaj']").filter(visible=True).first
+                                                if search_input.count() > 0:
+                                                    search_input.fill("test")
+                                                    try:
+                                                        with page.expect_navigation(timeout=5000):
+                                                            search_input.press("Enter")
+                                                    except: pass
+                                                    page.wait_for_timeout(3000)
+                                            except: pass
+                                            
+                                            try:
+                                                item_links = page.locator("a[href*='produkt'], a[href*='product'], a[href*='/p/'], .product a").filter(visible=True)
+                                                if item_links.count() > 0:
+                                                    try:
+                                                        with page.expect_navigation(timeout=5000):
+                                                            item_links.first.click()
+                                                    except: pass
+                                                    page.wait_for_timeout(3000)
+                                            except: pass
+                                                
+                                            try:
+                                                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                                                page.wait_for_timeout(3000)
+                                            except: pass
+                                        else:
+                                            try:
+                                                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                                                page.wait_for_timeout(3000)
+                                            except: pass
+                                    finally:
+                                        context.close()
+                                        browser.close()
+                            except Exception as p_err:
+                                st.error(f"Błąd pobierania danych sieciowych: {p_err}")
+                                continue
 
-                # --- PROMPT SYSTEMOWY DLA AGENTA ---
-                system_prompt = """
-                Jesteś technicznym ekspertem web analityki. Otrzymujesz wyciąg żądań JSON (żądania HTTP do Google Analytics i DoubleClick). 
-                Twoim zadaniem jest analiza żądań i ocena, czy strona korzysta z płatnej wersji GA360.
+                        with st.spinner("Analiza strumienia danych..."):
+                            if not os.path.exists(temp_har_path):
+                                st.error("Brak pliku logów.")
+                                continue
+                                
+                            with open(temp_har_path, "r", encoding="utf-8-sig") as f:
+                                har_json = json.load(f)
+                            
+                            filtered_requests = filtruj_logi_har(har_json)
+                            
+                            if not filtered_requests:
+                                st.warning("Brak śladów GA4/GMP.")
+                                continue
 
-                Zastosuj rygorystyczne reguły decyzyjne i przypisz im odpowiednie ikony (✅ jeśli reguła/poszlaka została spełniona, ❌ jeśli nie):
-                1. TWARDA REGUŁA 1: Liczba parametrów 'ep.' oraz 'epn.' w jednym zdarzeniu > 25.
-                2. TWARDA REGUŁA 2: Długość wartości parametrów NIESTANDARDOWYCH (custom, zazwyczaj przedrostki ep.* lub klucze własne) > 100 znaków. BEZWZGLĘDNIE WYKLUCZ z tej reguły natywne parametry: 'page_location', 'page_title' oraz 'page_referrer', ponieważ mają one oficjalne wyższe limity w wersji darmowej (odpowiednio 1000, 300 i 420 znaków).
-                3. TWARDA REGUŁA 3: Liczba właściwości użytkownika 'up.' lub 'upn.' w sesji > 25.
-                4. TWARDA REGUŁA 4: Zlicz unikalne, niestandardowe parametry zdefiniowane na poziomie pojedynczego produktu (item-scoped, wewnątrz obiektów pr1, pr2 itp.). Jeśli dla jednego produktu jest ich > 10 -> WERDYKT GA360 (100%).
-                5. MIĘKKA POSZLAKA 1: Suma UNIKALNYCH nazw parametrów 'ep.' ze wszystkich żądań łącznie > 50. (Uwaga metodologiczna: to poszlaka, nie twardy dowód, ponieważ limity 50/125 dotyczą rejestracji wymiarów w panelu admina, a nie samej wysyłki sieciowej).
-                6. MIĘKKA POSZLAKA 2: Server-Side Tagging (SSGTM). Sprawdź adres URL żądań. Jeśli żądania idą na domenę/subdomenę inną niż oficjalne serwery Google (nie analytics.google.com, nie google-analytics.com, nie doubleclick.net), oznacza to serwer pośredniczący.
-                7. MIĘKKA POSZLAKA 3: Wykrycie wielu identyfikatorów 'tid' (Multi-tagging do kilku G-...).
-                8. MIĘKKA POSZLAKA 4: Ślady integracji z Google Marketing Platform. Szukaj żądań zawierających w URL frazę 'doubleclick' oraz specyficznych znaczników dla tagów Floodlight (np. aktywności typu 'activity', parametry 'src=', 'type=', 'cat=' służące do raportowania konwersji w Campaign Manager 360 / DV360).
+                            response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
+                            st.success("Analiza ukończona!")
+                            
+                            parts = response_text.split("```json")
+                            st.markdown(parts[0])
+                            
+                            if len(parts) > 1:
+                                extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                excel_data_rows.append({
+                                    "Domena": czysta_domena,
+                                    "Werdykt końcowy": extracted_json.get("verdict"),
+                                    "Poziom pewności": extracted_json.get("confidence"),
+                                    "Identyfikator usługi (TID)": extracted_json.get("tid"),
+                                    "Kluczowe uzasadnienie": extracted_json.get("reason")
+                                })
+                                
+                    except Exception as loop_error:
+                        st.error(f"Błąd krytyczny pętli: {loop_error}")
+                    finally:
+                        if os.path.exists(temp_har_path):
+                            os.remove(temp_har_path)
 
-                Zwróć odpowiedź w czystym Markdown, dokładnie w formacie:
-                ### 📊 Wynik analizy Google Analytics
-                * **WERDYKT:** [GA 360 / Darmowe GA4 / Prawdopodobnie GA 360]
-                * **PEWNOŚĆ:** [np. 100% / 80%]
-                * **Wykryte Measurement ID (tid):** `[Wypisz wszystkie unikalne G-XXXXXXXXXX]`
+    # --- TABELA ZBIORCZA (Wspólna dla obu trybów) ---
+    if excel_data_rows:
+        st.write("")
+        st.subheader("📊 Zbiorcze Zestawienie Wyników")
+        df = pd.DataFrame(excel_data_rows)
+        st.dataframe(df, use_container_width=True)
+        
+        csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
+        st.download_button(
+            label="📥 Pobierz raport CSV",
+            data=csv_data,
+            file_name="Raport_GA360.csv",
+            mime="text/csv"
+        )
 
-                ---
-                ### 📋 Kontrola Reguł Analitycznych
-
-                **Reguły Krytyczne (Twarde - dają 100% pewności):**
-                * [✅/❌] **Liczba parametrów > 25 w evencie** (Wykryto maks: [X])
-                * [✅/❌] **Długość wartości parametru NIESTANDARDOWEGO > 100 znaków** (Najdłuższy niestandardowy: [X] znaków, natywne pominięto)
-                * [✅/❌] **Właściwości użytkownika > 25** (Wykryto maks: [X])
-                * [✅/❌] **Niestandardowe parametry produktu (item-scoped) > 10** (Wykryto maks: [X] w jednym produkcie)
-
-                **Reguły Kontekstowe (Miękkie - poszlaki biznesowe / wymagające weryfikacji API):**
-                * [✅/❌] **Suma unikalnych parametrów w sesji > 50** (Wykryto łącznie: [X] - wymaga potwierdzenia rejestracji w Admin API)
-                * [✅/❌] **Server-Side Tagging (Endpoint w 1st-party domain)** (Wykryto domenę: [Wpisz domenę])
-                * [✅/❌] **Korporacyjny Multi-tagging** (Zdarzenia lecą do wielu `tid`)
-                * [✅/❌] **Ekosystem Google Marketing Platform** (Wykryto tagi Floodlight / DoubleClick: [Tak/Nie])
-
-                ---
-                ### 🔍 Techniczne Uzasadnienie
-                [Krótkie podsumowanie dlaczego wydałeś taki werdykt z uwzględnieniem faktu rygorystycznego odrzucenia parametrów natywnych typu page_location].
-                """
-
-                # Wysłanie danych do modelu
-                response = model.generate_content([system_prompt, har_content])
-                
-                # Wyświetlenie wyniku
-                st.success("Analiza zakończona sukcesem!")
-                st.markdown(response.text)
-
-            except Exception as e:
-                st.error(f"❌ Wystąpił błąd podczas przetwarzania pliku: {e}")
-
-# ==========================================
-# ZAKŁADKA 2: SEKCJA EDUKACYJNA (EDU)
-# ==========================================
 with tab2:
     st.title("📚 Baza Wiedzy Analitycznej & Biznesowej")
-    st.markdown("Zrozumienie reguł walidacyjnych stosowanych przez Detektywa. Dowiedz się, skąd biorą się limity i jak interpretować wyniki podczas rozmów handlowych.")
-    
-    st.info("💡 **Dla kogo jest ta sekcja?** Dla handlowców (przygotowanie do cold callu) oraz analityków pragnących zweryfikować techniczne aspekty działania algorytmu.")
-
-    # --- KATEGORIA: REGUŁY TWARDE ---
-    st.header("🔴 Reguły Krytyczne (Twarde)")
-    st.markdown("Opierają się na oficjalnych, sztywnych limitach technologicznych nałożonych przez Google na darmową wersję GA4. Jeśli którakolwiek z tych reguł zostanie oznaczona jako ✅, strona **musi** posiadać płatną wersję GA360.")
-    
-    with st.expander("1. Liczba parametrów > 25 w pojedynczym evencie"):
-        st.markdown("""
-        * **Logika techniczna:** Agent szuka pojedynczego hitu (np. kliknięcie baneru) i zlicza parametry zaczynające się od `ep.` (tekstowe) oraz `epn.` (numeryczne).
-        * **Uzasadnienie limitu:** Darmowe GA4 pozwala na maksymalnie **25** takich parametrów w jednym zdarzeniu. Wersja GA4 360 podnosi ten limit do **100**.
-        * **Przykład w logach:** Jeśli zdarzenie `view_item` wysyła parametry od `ep.parametr_1` aż do `ep.parametr_28` (np. kolor, rozmiar, dostępność, magazyn, ID dostawcy itp.), darmowa wersja by je ucięła.
-        """)
-
-    with st.expander("2. Długość wartości parametru niestandardowego > 100 znaków (⚠️ Uwaga na wyjątki natywne)"):
-        st.markdown("""
-        * **Logika techniczna:** Agent mierzy liczbę znaków w wartościach parametrów, ale skupia się wyłącznie na parametrach **niestandardowych** (custom).
-        * **Uzasadnienie limitu:** W darmowym GA4 każda wartość parametru *custom* (tekstowego) jest bezwzględnie ucinana po osiągnięciu **100 znaków**. GA4 360 pozwala na przesyłanie aż **500 znaków**.
-        * **Dlaczego ignorujemy page_location / page_title / page_referrer?** Google wprowadziło oficjalne wyjątki dla swoich wbudowanych parametrów. W darmowej wersji `page_title` może mieć do 300 znaków, `page_referrer` do 420 znaków, a adres URL (`page_location`) aż do 1000 znaków. Przekroczenie 100 znaków w adresie URL jest rzeczą naturalną i nie świadczy o licencji Enterprise. Dopiero przekroczenie 100 znaków w parametrze autorskim (np. `ep.internal_search_term`) jest dowodem na GA360.
-        """)
-
-    with st.expander("3. Właściwości użytkownika (User Properties) > 25"):
-        st.markdown("""
-        * **Logika techniczna:** Agent zlicza parametry z przedrostkiem `up.` lub `upn.`, które opisują stałe cechy zalogowanego użytkownika w ramach sesji.
-        * **Uzasadnienie limitu:** Standardowe GA4 ma sztywny limit **25** zarejestrowanych wymiarów na poziomie użytkownika. GA4 360 rozszerza ten limit do **100**.
-        * **Przykład w logach:** Duże systemy CRM przekazują w sesji mnóstwo cech klienta (np. status VIP, segment zakupowy, rok rejestracji, preferowana kategoria). Przekroczenie 25 takich właściwości w logach jednoznacznie demaskuje licencję Enterprise.
-        """)
-
-    with st.expander("4. Niestandardowe parametry produktu (Item-scoped) > 10"):
-        st.markdown("""
-        * **Logika techniczna:** Agent zagląda do obiektów e-commerce reprezentujących produkty (tablice `pr1`, `pr2` itp.) i liczy unikalne parametry niestandardowe przypisane do pojedynczego przedmiotu.
-        * **Uzasadnienie limitu:** Dla parametrów na poziomie produktu (item-scoped custom dimensions) darmowy limit to **10**. Wersja płatna GA360 pozwala na wdrożenie aż **25** takich atrybutów.
-        * **Przykład w logach:** Rozbudowane e-commerce przekazują specyficzne cechy produktu bezpośrednio w obiekcie zakupowym, np. marżowość, ID producenta, status promocji, kod magazynowy, gabaryty. Wykrycie więcej niż 10 cech w jednym obiekcie produktu daje pewność licencji Enterprise.
-        """)
-
-    st.write("") # Odstęp wizualny
-
-    # --- KATEGORIA: REGUŁY MIĘKKIE ---
-    st.header("🟡 Reguły Kontekstowe (Miękkie / Poszlaki)")
-    st.markdown("Te reguły nie wynikają bezpośrednio z blokad technicznych w kodzie front-endowym, ale niosą potężny ładunek informacji biznesowej. Spełnienie tych kryteriów oznacza, że firma operuje budżetami i architekturą klasy Enterprise.")
-
-    with st.expander("1. Suma unikalnych parametrów w sesji > 50"):
-        st.markdown("""
-        * **Logika techniczna:** Agent analizuje cały plik HAR zbiorczo i wyciąga listę unikalnych nazw parametrów `ep.*` ze wszystkich zarejestrowanych hitów.
-        * **Uzasadnienie limitu:** W bezpłatnym GA4 limit zarejestrowanych wymiarów niestandardowych wynosi **50** (w 360 rośnie do **125**). 
-        * **Dlaczego to MIĘKKA poszlaka:** Limit dotyczy *aktywnej rejestracji* w panelu admina, a nie samej wysyłki sieciowej. Kod strony może słać 70 unikalnych nazw parametrów, ale jeśli w panelu włączono tylko 30 z nich, witryna nadal poprawnie działa na darmowym GA4. Wykrycie $>50$ parametrów w pliku HAR oznacza potężne skomplikowanie analityczne i potrzebę licencji 360, ale pełną weryfikację daje dopiero audyt przez GA4 Admin API (`customDimensions.list`).
-        """)
-
-    with st.expander("2. Server-Side Tagging (Punkt zbiórki w domenie 1st-party)"):
-        st.markdown("""
-        * **Logika techniczna:** Agent sprawdza hosta w adresach URL żądań. Jeśli ruch nie idzie bezpośrednio do `analytics.google.com` ani `google-analytics.com`, lecz na subdomenę klienta (np. `analityka.sklep.pl/g/collect`), wykrywane jest rozwiązanie serwerowe.
-        * **Uzasadnienie biznesowe:** Konfiguracja i utrzymanie Google Tag Manatela w wersji Server-Side wymaga stałego opłacania chmury (np. Google Cloud Platform). Przy dużym ruchu e-commerce to koszt rzędu tysięcy złotych miesięcznie. Firmy inwestujące w tak zaawansowaną infrastrukturę ochrony danych rzadko kiedy zostają przy limitowanym, darmowym GA4.
-        """)
-
-    with st.expander("3. Korporacyjny Multi-tagging"):
-        st.markdown("""
-        * **Logika techniczna:** Agent zlicza unikalne identyfikatory pomiaru w parametrach `tid=` (zaczynające się od `G-`).
-        * **Uzasadnienie biznesowe:** Wysyłanie tych samych danych równolegle do kilku różnych kont GA4 charakteryzuje duże struktury holdingowe lub międzynarodowe (np. jeden tag dla rynku lokalnego, drugi zbiorczy dla globalnej centrali). Małe firmy unikają tej praktyki z powodu generowania chaosu i podwójnego zużycia zasobów.
-        """)
-
-    with st.expander("4. Ekosystem Google Marketing Platform (Floodlight)"):
-        st.markdown("""
-        * **Logika techniczna:** Agent analizuje żądania sieciowe kierowane do domeny `doubleclick.net` w poszukiwaniu tagów konwersji Floodlight (parametry typu `src=`, `type=`, `cat=`).
-        * **Uzasadnienie biznesowe:** Tagi Floodlight są natywnym elementem płatnego ekosystemu reklamowego korporacji (Campaign Manager 360, Display & Video 360, Search Ads 360). Its obecność to jasny sygnał, że firma realizuje wielomilionowe budżety reklamowe w systemach programatycznych – co niemal w 95% przypadków idzie w parze z licencją GA360 w celu pełnej analityki omnichanelowej.
-        """)
+    st.markdown("Dokumentacja logiczna reguł wbudowana prosto w silnik aplikacji.")
+    st.info("Wszystkie limity są twardo zakodowane w funkcjach filtrujących Pythona.")
