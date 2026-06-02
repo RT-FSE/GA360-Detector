@@ -55,7 +55,7 @@ def filtruj_logi_har(har_json):
             continue
         
         is_analytics = False
-        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track", "tag", "data"]):
+        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track", "tag", "data", "pagead", "activityi", "fls."]):
             is_analytics = True
             
         query_string = entry.get("request", {}).get("queryString", [])
@@ -124,7 +124,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
         if czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
-        if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net"]) or "g.doubleclick" in original_url.lower() or "/ddm/activity/" in original_url.lower():
+        if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in original_url.lower() for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
             gmp_detected = "Tak"
             
         base_params = {}
@@ -168,14 +168,14 @@ def analizuj_lokalnie(requests_list, czysta_domena):
             tid_val = str(params["tid"]).upper()
             if tid_val.startswith("G-"):
                 wykryte_ga4_tids.add(tid_val)
-            elif tid_val.startswith("AW-"):
+            elif tid_val.startswith("AW-") or tid_val.startswith("DC-"):
                 wykryte_ads_tids.add(tid_val)
         else:
             tid_match_ga4 = re.search(r'tid=(G-[A-Z0-9]+)', original_url, re.IGNORECASE)
             if tid_match_ga4: 
                 wykryte_ga4_tids.add(tid_match_ga4.group(1).upper())
                 
-            tid_match_aw = re.search(r'tid=(AW-[A-Z0-9\-]+)', original_url, re.IGNORECASE)
+            tid_match_aw = re.search(r'tid=((?:AW|DC)-[A-Z0-9\-]+)', original_url, re.IGNORECASE)
             if tid_match_aw:
                 wykryte_ads_tids.add(tid_match_aw.group(1).upper())
 
@@ -246,7 +246,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
         pewnosc = "95%"
 
     tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak GA4"
-    tid_ads_display = f" (+ Ads: {', '.join(list(wykryte_ads_tids))})" if wykryte_ads_tids else ""
+    tid_ads_display = f" (+ Ads/DV360: {', '.join(list(wykryte_ads_tids))})" if wykryte_ads_tids else ""
     full_tid_display = tid_ga4_display + tid_ads_display
 
     markdown_output = f"""
@@ -331,7 +331,7 @@ with tab1:
     # --- TRYB 2: AUTOMAT PLAYWRIGHT ---
     elif tryb_pracy == "🤖 Automat (Playwright)":
         st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokalny algorytm Pythona natychmiast sprawdzi 8 reguł.")
-        domeny_input = st.text_area("Lista domen do sprawdzenia:", height=150, placeholder="renault.pl\nhttps://euro.com.pl/telefony/jakis-model.bhtml")
+        domeny_input = st.text_area("Lista domen do sprawdzenia:", height=150, placeholder="r.pl\nhttps://euro.com.pl/telefony/jakis-model.bhtml")
 
         if st.button("🚀 Uruchom Automata"):
             if not domeny_input.strip():
@@ -368,12 +368,20 @@ with tab1:
                                         page.wait_for_timeout(3000)
                                         
                                         try:
-                                            cookie_selectors = [
-                                                "button:has-text('W porządku')", "button:has-text('Zaakceptuj wszystko')", 
-                                                "button:has-text('Akceptuję')", "button:has-text('Allow all')",
-                                                "button:has-text('Zgadzam się')", "button:has-text('Zaakceptuj')"
+                                            # ULTIMATYWNY POGROMCA COOKIES: Uwzględnia wszystkie polskie frazy i różne tagi HTML
+                                            cookie_phrases = [
+                                                'Akceptuję', 'Akceptuj wszystkie', 'Zgadzam się', 'Zaakceptuj wszystko',
+                                                'Zezwól na wszystkie', 'Akceptuj', 'Przejdź do serwisu', 'Wyrażam zgodę',
+                                                'Zezwól', 'Rozumiem i akceptuję', 'W porządku', 'Allow all', 'Zaakceptuj'
                                             ]
+                                            cookie_selectors = []
+                                            for phrase in cookie_phrases:
+                                                cookie_selectors.append(f"button:has-text('{phrase}')")
+                                                cookie_selectors.append(f"a:has-text('{phrase}')")
+                                                cookie_selectors.append(f"[role='button']:has-text('{phrase}')")
+                                                
                                             full_selector = ", ".join(cookie_selectors)
+                                            
                                             visible_cookie_btn = page.locator(full_selector).filter(visible=True).first
                                             if visible_cookie_btn.count() > 0:
                                                 visible_cookie_btn.click(timeout=4000)
