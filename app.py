@@ -1,48 +1,16 @@
 import streamlit as st
 import json
-import os
 import pandas as pd
-import uuid 
 import re
 import base64
 from urllib.parse import urlparse, parse_qs, unquote, quote
-from playwright.sync_api import sync_playwright
-
-# --- Wymuszenie instalacji przeglądarki na chmurze Streamlit (Pancerny wariant) ---
-@st.cache_resource
-def install_playwright():
-    os.system("python -m playwright install chromium")
-
-install_playwright()
 
 st.set_page_config(page_title="Detektyw GA360", page_icon="🕵️‍♂️", layout="wide")
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
-st.sidebar.markdown("**Wersja: 100% Lokalna / Chmurowa**")
-
-tryb_pracy = st.sidebar.radio(
-    "Wybierz metodę wprowadzania danych:",
-    options=["📥 Wgraj własny plik (.HAR)", "🤖 Automat (Playwright)"],
-    help="Użyj uploadu .HAR, jeśli strona blokuje automatyczne boty lub działasz na serwerze chmurowym."
-)
-
-st.sidebar.write("---")
-
-if tryb_pracy == "🤖 Automat (Playwright)":
-    glebokosc_skanowania = st.sidebar.radio(
-        "Głębokość skanowania automatu:",
-        options=["Szybka (Strona główna)", "Pełna (Ścieżka e-commerce)"],
-        index=1
-    )
-    tryb_headless = st.sidebar.checkbox(
-        "Tryb serwerowy (Headless)", 
-        value=True, 
-        help="Zaznacz, jeśli aplikacja działa na zewnętrznym serwerze (np. Streamlit Cloud)."
-    )
-else:
-    glebokosc_skanowania = "N/A"
-    tryb_headless = True
+st.sidebar.markdown("**Wersja: 100% Lokalna (Analiza HAR)**")
+st.sidebar.info("Moduł automatyczny został wyłączony w celu zapewnienia maksymalnej dokładności danych. Używaj wyłącznie wgranych ręcznie z przeglądarki plików .har.")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
@@ -288,180 +256,43 @@ tab1, tab2 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)"])
 with tab1:
     excel_data_rows = []
 
-    # --- TRYB 1: UPLOAD HAR ---
-    if tryb_pracy == "📥 Wgraj własny plik (.HAR)":
-        st.markdown("Wyeksportuj plik `.har` ze swojej przeglądarki (Zakładka Network w DevTools) i wgraj go poniżej.")
-        
-        domena_docelowa = st.text_input("Główna domena badanego sklepu (np. euro.com.pl):", help="Potrzebne do poprawnego zbadania Server-Side Taggingu.")
-        wgrany_plik = st.file_uploader("Wybierz plik .har", type=["har"])
-        
-        if st.button("🔍 Analizuj wgrany plik"):
-            if not domena_docelowa:
-                st.error("Proszę wpisać domenę sklepu przed analizą.")
-            elif wgrany_plik is not None:
-                with st.spinner("Analiza struktury HAR..."):
-                    try:
-                        har_data = json.load(wgrany_plik)
-                        filtered_requests = filtruj_logi_har(har_data)
+    st.markdown("Wyeksportuj plik `.har` ze swojej przeglądarki (Zakładka Network w DevTools) i wgraj go poniżej.")
+    
+    domena_docelowa = st.text_input("Główna domena badanego sklepu (np. euro.com.pl):", help="Potrzebne do poprawnego zbadania Server-Side Taggingu.")
+    wgrany_plik = st.file_uploader("Wybierz plik .har", type=["har"])
+    
+    if st.button("🔍 Analizuj wgrany plik"):
+        if not domena_docelowa:
+            st.error("Proszę wpisać domenę sklepu przed analizą.")
+        elif wgrany_plik is not None:
+            with st.spinner("Analiza struktury HAR..."):
+                try:
+                    har_data = json.load(wgrany_plik)
+                    filtered_requests = filtruj_logi_har(har_data)
+                    
+                    if not filtered_requests:
+                        st.warning("Brak skryptów GA4/GMP w tym pliku HAR. Pamiętaj, aby plik był poprawnie nagrany.")
+                    else:
+                        czysta_domena = domena_docelowa.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
+                        response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
                         
-                        if not filtered_requests:
-                            st.warning("Brak skryptów GA4/GMP w tym pliku HAR. Pamiętaj, aby plik był poprawnie nagrany.")
-                        else:
-                            czysta_domena = domena_docelowa.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
-                            response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
-                            
-                            st.success("Analiza lokalna ukończona!")
-                            parts = response_text.split("```json")
-                            st.markdown(parts[0])
-                            
-                            if len(parts) > 1:
-                                extracted_json = json.loads(parts[1].split("```")[0].strip())
-                                excel_data_rows.append({
-                                    "Domena": czysta_domena,
-                                    "Werdykt końcowy": extracted_json.get("verdict"),
-                                    "Poziom pewności": extracted_json.get("confidence"),
-                                    "Identyfikator usługi (TID)": extracted_json.get("tid"),
-                                    "Kluczowe uzasadnienie": extracted_json.get("reason")
-                                })
-                    except Exception as e:
-                        st.error(f"Błąd odczytu pliku: {e}")
-            else:
-                st.warning("Najpierw wgraj plik .har.")
-
-    # --- TRYB 2: AUTOMAT PLAYWRIGHT ---
-    elif tryb_pracy == "🤖 Automat (Playwright)":
-        st.markdown("Wpisz domeny (jedna pod drugą). Bot pobierze pełne logi sieciowe, a lokalny algorytm Pythona natychmiast sprawdzi 8 reguł.")
-        domeny_input = st.text_area("Lista domen do sprawdzenia:", height=150, placeholder="r.pl\nhttps://euro.com.pl/telefony/jakis-model.bhtml")
-
-        if st.button("🚀 Uruchom Automata"):
-            if not domeny_input.strip():
-                st.error("Wpisz przynajmniej jedną domenę!")
-                st.stop()
-                
-            domeny = [d.strip() for d in domeny_input.split("\n") if d.strip()]
-            
-            for domena in domeny:
-                oryginalny_url = domena.replace(" ", "")
-                url_do_otwarcia = oryginalny_url if oryginalny_url.startswith("http") else f"https://{oryginalny_url}"
-                czysta_domena = oryginalny_url.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
-                
-                unique_id = uuid.uuid4().hex[:8]
-                temp_har_path = f"temp_{czysta_domena}_{unique_id}.har"
-                
-                with st.expander(f"🌐 Zobacz raport dla: {czysta_domena}", expanded=True):
-                    try:
-                        with st.spinner("Pobieranie ruchu sieciowego (Playwright)..."):
-                            try:
-                                with sync_playwright() as p:
-                                    browser = p.chromium.launch(headless=tryb_headless)
-                                    context = browser.new_context(
-                                        record_har_path=temp_har_path, 
-                                        ignore_https_errors=True,
-                                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                                    )
-                                    page = context.new_page()
-                                    
-                                    try:
-                                        page.set_default_navigation_timeout(25000) 
-                                        page.set_default_timeout(10000)            
-                                        page.goto(url_do_otwarcia, wait_until="load")
-                                        page.wait_for_timeout(3000)
-                                        
-                                        try:
-                                            # ULTIMATYWNY POGROMCA COOKIES: Uwzględnia wszystkie polskie frazy i różne tagi HTML
-                                            cookie_phrases = [
-                                                'Akceptuję', 'Akceptuj wszystkie', 'Zgadzam się', 'Zaakceptuj wszystko',
-                                                'Zezwól na wszystkie', 'Akceptuj', 'Przejdź do serwisu', 'Wyrażam zgodę',
-                                                'Zezwól', 'Rozumiem i akceptuję', 'W porządku', 'Allow all', 'Zaakceptuj'
-                                            ]
-                                            cookie_selectors = []
-                                            for phrase in cookie_phrases:
-                                                cookie_selectors.append(f"button:has-text('{phrase}')")
-                                                cookie_selectors.append(f"a:has-text('{phrase}')")
-                                                cookie_selectors.append(f"[role='button']:has-text('{phrase}')")
-                                                
-                                            full_selector = ", ".join(cookie_selectors)
-                                            
-                                            visible_cookie_btn = page.locator(full_selector).filter(visible=True).first
-                                            if visible_cookie_btn.count() > 0:
-                                                visible_cookie_btn.click(timeout=4000)
-                                                page.wait_for_timeout(2000)
-                                        except Exception:
-                                            pass
-                                        
-                                        if "Pełna" in glebokosc_skanowania:
-                                            try:
-                                                search_input = page.locator("input[type='search'], input[name*='search'], input[placeholder*='szukaj']").filter(visible=True).first
-                                                if search_input.count() > 0:
-                                                    search_input.fill("test")
-                                                    try:
-                                                        with page.expect_navigation(timeout=5000):
-                                                            search_input.press("Enter")
-                                                    except: pass
-                                                    page.wait_for_timeout(3000)
-                                            except: pass
-                                            
-                                            try:
-                                                item_links = page.locator("a[href*='produkt'], a[href*='product'], a[href*='/p/'], .product a").filter(visible=True)
-                                                if item_links.count() > 0:
-                                                    try:
-                                                        with page.expect_navigation(timeout=5000):
-                                                            item_links.first.click()
-                                                    except: pass
-                                                    page.wait_for_timeout(3000)
-                                            except: pass
-                                                
-                                            try:
-                                                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                                                page.wait_for_timeout(3000)
-                                            except: pass
-                                        else:
-                                            try:
-                                                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                                                page.wait_for_timeout(3000)
-                                            except: pass
-                                    finally:
-                                        context.close()
-                                        browser.close()
-                            except Exception as p_err:
-                                st.error(f"Błąd pobierania danych sieciowych: {p_err}")
-                                continue
-
-                        with st.spinner("Analiza strumienia danych..."):
-                            if not os.path.exists(temp_har_path):
-                                st.error("Brak pliku logów.")
-                                continue
-                                
-                            with open(temp_har_path, "r", encoding="utf-8-sig") as f:
-                                har_json = json.load(f)
-                            
-                            filtered_requests = filtruj_logi_har(har_json)
-                            
-                            if not filtered_requests:
-                                st.warning("Brak śladów GA4/GMP.")
-                                continue
-
-                            response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
-                            st.success("Analiza ukończona!")
-                            
-                            parts = response_text.split("```json")
-                            st.markdown(parts[0])
-                            
-                            if len(parts) > 1:
-                                extracted_json = json.loads(parts[1].split("```")[0].strip())
-                                excel_data_rows.append({
-                                    "Domena": czysta_domena,
-                                    "Werdykt końcowy": extracted_json.get("verdict"),
-                                    "Poziom pewności": extracted_json.get("confidence"),
-                                    "Identyfikator usługi (TID)": extracted_json.get("tid"),
-                                    "Kluczowe uzasadnienie": extracted_json.get("reason")
-                                })
-                                
-                    except Exception as loop_error:
-                        st.error(f"Błąd krytyczny pętli: {loop_error}")
-                    finally:
-                        if os.path.exists(temp_har_path):
-                            os.remove(temp_har_path)
+                        st.success("Analiza lokalna ukończona!")
+                        parts = response_text.split("```json")
+                        st.markdown(parts[0])
+                        
+                        if len(parts) > 1:
+                            extracted_json = json.loads(parts[1].split("```")[0].strip())
+                            excel_data_rows.append({
+                                "Domena": czysta_domena,
+                                "Werdykt końcowy": extracted_json.get("verdict"),
+                                "Poziom pewności": extracted_json.get("confidence"),
+                                "Identyfikator usługi (TID)": extracted_json.get("tid"),
+                                "Kluczowe uzasadnienie": extracted_json.get("reason")
+                            })
+                except Exception as e:
+                    st.error(f"Błąd odczytu pliku: {e}")
+        else:
+            st.warning("Najpierw wgraj plik .har.")
 
     # --- TABELA ZBIORCZA ---
     if excel_data_rows:
