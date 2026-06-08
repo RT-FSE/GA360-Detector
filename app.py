@@ -238,6 +238,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
             pewnosc = "90%"
     else:
         uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/30, Dane_Event: {int(data_score_ep)}/40, Dane_Sesja: {int(data_score_gl)}/29)"
+        
+        # INWERSJA PEWNOŚCI DLA DARMOWEGO GA4
         if twarda_regula_zlamana:
             werdykt = "GA 360"
             pewnosc = "100%"
@@ -246,13 +248,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
             pewnosc = f"{total_score}%"
         elif infra_score >= 20 and total_score < 60:
             werdykt = "Darmowe GA4 (Zaawansowana infrastruktura)"
-            pewnosc = f"{total_score}%"
+            pewnosc = f"{100 - total_score}%"
         elif puste_zdarzenia_ga4:
             werdykt = "Darmowe GA4 (Puste parametry)"
-            pewnosc = f"{total_score}%"
+            pewnosc = "95%"
         else:
             werdykt = "Darmowe GA4"
-            pewnosc = f"{total_score}%"
+            pewnosc = f"{100 - total_score}%"
 
     tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak Google Analytics"
     inny_system_display = f"Tak, {', '.join(wykryte_inne)}" if wykryte_inne else "Nie"
@@ -403,15 +405,16 @@ with tab2:
     with st.expander("Jak czytać Pewność vs Punkty? (Instrukcja dekodowania)"):
         st.markdown("""
         System rozróżnia dwa pojęcia: **Pewność Werdyktu (%)** oraz **Punkty analityczne (max 99 pkt)**. 
-        Zazwyczaj te liczby są takie same. Rozjazd pojawia się tylko w dwóch sytuacjach, co pozwala zachować precyzję detekcji. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz rozbicie punktów na kategorie:
+        Zazwyczaj te liczby są takie same. Rozjazd pojawia się w specyficznych sytuacjach, co pozwala zachować precyzję detekcji. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz rozbicie punktów na kategorie:
 
         * **Infra (max 30 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za: Server-Side Tagging, ekosystem reklamowy Floodlight (GMP) oraz Multi-tagging.
         * **Dane_Event (max 40 pkt):** Ocenia ciężar największego pojedynczego kliknięcia. Im bliżej darmowego limitu 25 parametrów w jednym hicie, tym więcej punktów. Wynik 0 pkt oznacza analitykę "z pudełka" (brak własnych zmiennych). 
         * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny. Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów w sesji.
         
-        **Kiedy Pewność (%) przewyższa uzyskane Punkty?**
-        * **Przypadek 1 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
-        * **Przypadek 2 (Brak GA, Wykryto inny system):** Brak logów Google daje 0 punktów w algorytmie. Jeśli jednak skrypt wyłapie np. tagi Adobe Analytics, automatycznie ustawia Pewność na 100% (będąc pewnym, że to klient z Adobe). W kolumnie uzasadnienia nie zobaczysz wtedy tabeli punktów, a dedykowany komunikat o analizie footprintów konkurencji.
+        **Kiedy Pewność (%) zachowuje się inaczej niż wyliczone Punkty?**
+        * **Przypadek 1 (Wysoka pewność darmowego GA4):** Sklep zdobył tylko 23/99 punktów, co oznacza, że szansa na posiadanie płatnego GA360 jest znikoma (23%). Wtedy system dokonuje inwersji i stwierdza: Skoro mam 23% szans na GA360, to moja pewność, że jest to Darmowe GA4 wynosi aż **77%** (`100 - 23`). 
+        * **Przypadek 2 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
+        * **Przypadek 3 (Brak GA, Wykryto inny system):** Brak logów Google daje 0 punktów w algorytmie. Jeśli jednak skrypt wyłapie np. tagi Adobe Analytics, automatycznie ustawia Pewność na 100% (będąc pewnym, że to klient z Adobe). W kolumnie uzasadnienia nie zobaczysz wtedy tabeli punktów, a dedykowany komunikat o analizie footprintów konkurencji.
         """)
 
 with tab3:
