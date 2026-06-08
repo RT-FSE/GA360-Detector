@@ -215,7 +215,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
 
-    # --- NOWA MATEMATYKA (DYNAMIC SCORING z punktami zamiast %) ---
+    # --- MATEMATYKA (DYNAMIC SCORING) ---
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
     if r8 == "[✅]": infra_score += 10
@@ -224,10 +224,11 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     data_score_ep = min((max_ep_per_event / 25) * 40, 40)
     data_score_gl = min((len(globalne_ep_params) / 50) * 29, 29)
     
-    total_score = infra_score + data_score_ep + data_score_gl
+    total_score = int(infra_score + data_score_ep + data_score_gl)
 
     if len(wykryte_ga4_tids) == 0:
         werdykt = "Brak Google Analytics"
+        uzasadnienie_tekst = "Brak ruchu Google. Klasyfikacja oparta na sygnaturach rynkowych alternatyw."
         if wykryte_inne:
             if "Adobe Analytics (Enterprise)" in wykryte_inne:
                 pewnosc = "100%"
@@ -236,21 +237,22 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         else:
             pewnosc = "90%"
     else:
+        uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/30, Dane_Event: {int(data_score_ep)}/40, Dane_Sesja: {int(data_score_gl)}/29)"
         if twarda_regula_zlamana:
             werdykt = "GA 360"
             pewnosc = "100%"
         elif total_score >= 60:
             werdykt = "Prawdopodobnie GA 360"
-            pewnosc = f"{int(total_score)}%"
+            pewnosc = f"{total_score}%"
         elif infra_score >= 20 and total_score < 60:
             werdykt = "Darmowe GA4 (Zaawansowana infrastruktura)"
-            pewnosc = f"{int(total_score)}%"
+            pewnosc = f"{total_score}%"
         elif puste_zdarzenia_ga4:
             werdykt = "Darmowe GA4 (Puste parametry)"
-            pewnosc = f"{int(total_score)}%"
+            pewnosc = f"{total_score}%"
         else:
             werdykt = "Darmowe GA4"
-            pewnosc = f"{int(total_score)}%"
+            pewnosc = f"{total_score}%"
 
     tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak Google Analytics"
     inny_system_display = f"Tak, {', '.join(wykryte_inne)}" if wykryte_inne else "Nie"
@@ -280,11 +282,10 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "confidence": pewnosc,
         "tid": tid_ga4_display,
         "other_systems_text": inny_system_display,
-        "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}/30 pkt, Dane_Event: {int(data_score_ep)}/40 pkt, Dane_Sesja: {int(data_score_gl)}/29 pkt)"
+        "reason": uzasadnienie_tekst
     }
     
     json_str = json.dumps(json_payload, indent=2)
-    # BEZPIECZNY RETURN: Konkatenacja chroni przed błędem parsera f-stringów
     return markdown_output + "\n```json\n" + json_str + "\n```"
 
 # ==========================================
@@ -399,17 +400,18 @@ with tab2:
     st.write("")
     st.subheader("🟡 Dynamiczny Scoring Kontekstowy (Analiza Gęstości Danych)")
 
-    with st.expander("Jak czytać Uzasadnienie Scoringu w Excelu? (Instrukcja dekodowania)"):
+    with st.expander("Jak czytać Pewność vs Punkty? (Instrukcja dekodowania)"):
         st.markdown("""
-        Ostateczna pewność systemu (np. **84%**) to suma zdobytych punktów na przestrzeni analizy infrastruktury i danych. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz zawsze rozbicie wyniku na 3 kategorie w formacie punktów (*pkt*):
+        System rozróżnia dwa pojęcia: **Pewność Werdyktu (%)** oraz **Punkty analityczne (max 99 pkt)**. 
+        Zazwyczaj te liczby są takie same. Rozjazd pojawia się tylko w dwóch sytuacjach, co pozwala zachować precyzję detekcji. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz rozbicie punktów na kategorie:
 
-        * **Infra (max 30 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za: Server-Side Tagging, ekosystem reklamowy Floodlight (GMP) oraz Multi-tagging. Im więcej punktów, tym zasobniejszy technologicznie jest podmiot.
+        * **Infra (max 30 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za: Server-Side Tagging, ekosystem reklamowy Floodlight (GMP) oraz Multi-tagging.
         * **Dane_Event (max 40 pkt):** Ocenia ciężar największego pojedynczego kliknięcia. Im bliżej darmowego limitu 25 parametrów w jednym hicie, tym więcej punktów. Wynik 0 pkt oznacza analitykę "z pudełka" (brak własnych zmiennych). 
-        * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny (ile unikalnych parametrów w ogóle jest zaimplementowanych na stronie). Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów.
+        * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny. Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów w sesji.
         
-        **Przykłady z życia wzięte:**
-        * `Scoring: 20% (Infra: 20/30 pkt, Dane_Event: 0/40 pkt, Dane_Sesja: 0/29 pkt)` ➡️ Klasyczne puste, darmowe GA4 bez żadnych parametrów, ale postawione na własnym serwerze (najpewniej w celu ratowania Facebook Ads).
-        * `Scoring: 84% (Infra: 20/30 pkt, Dane_Event: 40/40 pkt, Dane_Sesja: 24/29 pkt)` ➡️ Potężny e-commerce, prawdopodobnie GA360. Mają płatny ekosystem i maksymalnie "upchane" danymi zdarzenia, które w zwykłym GA4 zostałyby ucięte.
+        **Kiedy Pewność (%) przewyższa uzyskane Punkty?**
+        * **Przypadek 1 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
+        * **Przypadek 2 (Brak GA, Wykryto inny system):** Brak logów Google daje 0 punktów w algorytmie. Jeśli jednak skrypt wyłapie np. tagi Adobe Analytics, automatycznie ustawia Pewność na 100% (będąc pewnym, że to klient z Adobe). W kolumnie uzasadnienia nie zobaczysz wtedy tabeli punktów, a dedykowany komunikat o analizie footprintów konkurencji.
         """)
 
 with tab3:
