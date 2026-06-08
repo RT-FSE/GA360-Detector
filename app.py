@@ -227,15 +227,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     total_score = infra_score + data_score_ep + data_score_gl
 
     if len(wykryte_ga4_tids) == 0:
+        werdykt = "Brak Google Analytics"
         if wykryte_inne:
             if "Adobe Analytics (Enterprise)" in wykryte_inne:
-                werdykt = "Adobe Analytics (Enterprise)"
                 pewnosc = "100%"
             else:
-                werdykt = f"Inny system ({', '.join(wykryte_inne)})"
                 pewnosc = "95%"
         else:
-            werdykt = "Brak Analityki (Nieznany system)"
             pewnosc = "90%"
     else:
         if twarda_regula_zlamana:
@@ -255,15 +253,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
             pewnosc = f"{int(total_score)}%"
 
     tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak Google Analytics"
-    tid_ads_display = f" (+ Ads/DV360: {', '.join(list(wykryte_ads_tids))})" if wykryte_ads_tids else ""
-    full_tid_display = tid_ga4_display + tid_ads_display
-    inne_systemy_display = ", ".join(wykryte_inne) if wykryte_inne else "Nie wykryto alternatywnych trackerów"
+    inny_system_display = f"Tak, {', '.join(wykryte_inne)}" if wykryte_inne else "Nie"
 
     markdown_output = f"""
 * **WERDYKT:** **{werdykt}**
-* **SCORING GA360 (Pewność):** `{pewnosc}`
-* **Wykryte Measurement ID (tid):** `{full_tid_display}`
-* **Inne systemy analityczne:** `{inne_systemy_display}`
+* **PEWNOŚĆ WERDYKTU:** `{pewnosc}`
+* **INNY SYSTEM ANALITYCZNY:** `{inny_system_display}`
+* **Wykryte Measurement ID (tid):** `{tid_ga4_display}`
 
 ---
 ### 📋 Kontrola Reguł Analitycznych (Dla ekosystemu Google)
@@ -282,12 +278,11 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     json_payload = {
         "verdict": werdykt,
         "confidence": pewnosc,
-        "tid": full_tid_display,
-        "other_systems": list(wykryte_inne),
+        "tid": tid_ga4_display,
+        "other_systems_text": inny_system_display,
         "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}%, Dane_Event: {int(data_score_ep)}%, Dane_Sesja: {int(data_score_gl)}%)"
     }
     
-    # Bezpieczne renderowanie JSON do formatu Markdown
     json_str = json.dumps(json_payload, indent=2)
     return f"{markdown_output}\n```json\n{json_str}\n```"
 
@@ -330,9 +325,9 @@ with tab1:
                                 excel_data_rows.append({
                                     "Domena (z pliku)": czysta_domena,
                                     "Werdykt końcowy": "Błąd / Brak danych",
-                                    "Scoring GA360": "0%",
+                                    "Pewność werdyktu": "0%",
                                     "Identyfikator usługi (TID)": "Brak",
-                                    "Alternatywne systemy": "Brak",
+                                    "Inny system analityczny": "Nie",
                                     "Kluczowe uzasadnienie": "Brak zdarzeń sieciowych."
                                 })
                             else:
@@ -345,9 +340,9 @@ with tab1:
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
-                                        "Scoring GA360": extracted_json.get("confidence"),
+                                        "Pewność werdyktu": extracted_json.get("confidence"),
                                         "Identyfikator usługi (TID)": extracted_json.get("tid"),
-                                        "Alternatywne systemy": ", ".join(extracted_json.get("other_systems", [])),
+                                        "Inny system analityczny": extracted_json.get("other_systems_text"),
                                         "Kluczowe uzasadnienie": extracted_json.get("reason")
                                     })
                     except Exception as e:
