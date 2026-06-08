@@ -8,8 +8,8 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", layout="wide")
 
 # --- PANEL BOCZNY (SIDEBAR) ---
-st.sidebar.title("⚙️ Tryb Pracy Agenta")
-st.sidebar.markdown("**Wersja: Masowa Analiza HAR (Bulk Upload)**")
+st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
+st.sidebar.caption("Wersja: 104")
 st.sidebar.info("Moduł automatyczny został wyłączony w celu zapewnienia maksymalnej dokładności danych. Wgraj jeden lub wiele plików .har jednocześnie.")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
@@ -221,7 +221,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     if r8 == "[✅]": infra_score += 10
     if r7 == "[✅]": infra_score += 10
     
-    # Funkcja int() obcina ułamki natychmiast, aby uniknąć błędów przy ich sumowaniu
     data_score_ep = int(min((max_ep_per_event / 25) * 40, 40))
     data_score_gl = int(min((len(globalne_ep_params) / 50) * 29, 29))
     
@@ -288,9 +287,12 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "reason": uzasadnienie_tekst
     }
     
+    # BEZPIECZNE ZWRACANIE WYNIKU
     json_str = json.dumps(json_payload, indent=2)
-    return markdown_output + "\n```json\n" + json_str + "\n
-```"
+    znacznik_start = "\n```json\n"
+    znacznik_koniec = "\n```"
+    
+    return markdown_output + znacznik_start + json_str + znacznik_koniec
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
@@ -342,8 +344,7 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("
-```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
