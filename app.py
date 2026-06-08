@@ -9,8 +9,8 @@ st.set_page_config(page_title="Detektyw GA360 & TechStack", page_icon="🕵️�
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
-st.sidebar.markdown("**Wersja: Inteligentna Analiza HAR (Multi-Tracker)**")
-st.sidebar.info("Narzędzie analizuje ekosystem Google (GA360) oraz automatycznie identyfikuje alternatywne systemy analityczne Enterprise i Standard.")
+st.sidebar.markdown("**Wersja: Masowa Analiza HAR (Bulk Upload)**")
+st.sidebar.info("Moduł automatyczny został wyłączony w celu zapewnienia maksymalnej dokładności danych. Wgraj jeden lub wiele plików .har jednocześnie.")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
@@ -31,7 +31,6 @@ def filtruj_logi_har(har_json):
         original_url = entry.get("request", {}).get("url", "")
         url_lower = original_url.lower()
         
-        # KROK NOWY: Skonuj ruch pod kątem alternatywnych systemów trackingowych
         for system, footprints in alternatywne_systemy.items():
             if any(fp in url_lower for fp in footprints):
                 wykryte_inne.add(system)
@@ -106,7 +105,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         parsed_url = urlparse(original_url)
         hostname = parsed_url.hostname or ""
         
-        if czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
+        # Weryfikacja Server-Side Tagging na podstawie autowykrytej domeny
+        if czysta_domena != "Nieznana domena" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
         if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in original_url.lower() for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
@@ -217,7 +217,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     miekkie_poszlaki_licznik = sum([1 for r in [r5, r6, r7, r8] if r == "[✅]"])
     
-    # --- NOWA LOGIKA DYNAMICZNEGO WERDYKTU ---
+    puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
+    
     if len(wykryte_ga4_tids) == 0:
         if wykryte_inne:
             if "Adobe Analytics (Enterprise)" in wykryte_inne:
@@ -233,6 +234,9 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         if twarda_regula_zlamana:
             werdykt = "GA 360"
             pewnosc = "100%"
+        elif puste_zdarzenia_ga4 and miekkie_poszlaki_licznik > 0:
+            werdykt = "Darmowe GA4 (Puste parametry)"
+            pewnosc = "85%"
         elif r5 == "[✅]" or miekkie_poszlaki_licznik >= 2:
             werdykt = "Prawdopodobnie GA 360"
             pewnosc = "75%"
@@ -249,7 +253,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     inne_systemy_display = ", ".join(wykryte_inne) if wykryte_inne else "Nie wykryto alternatywnych trackerów"
 
     markdown_output = f"""
-### 📊 Wynik analizy Google Analytics dla domeny {czysta_domena}
 * **WERDYKT:** **{werdykt}**
 * **PEWNOŚĆ:** `{pewnosc}`
 * **Wykryte Measurement ID (tid):** `{full_tid_display}`
@@ -289,57 +292,75 @@ tab1, tab2, tab3 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "
 with tab1:
     excel_data_rows = []
 
-    st.markdown("Wyeksportuj plik `.har` ze swojej przeglądarki (Zakładka Network w DevTools) i wgraj go poniżej.")
+    st.markdown("Wyeksportuj pliki `.har` ze swojej przeglądarki i wgraj je poniżej. **Możesz przeciągnąć wiele plików naraz.**")
     
-    domena_docelowa = st.text_input("Główna domena badanego sklepu (np. euro.com.pl):", help="Potrzebne do poprawnego zbadania Server-Side Taggingu.")
-    wgrany_plik = st.file_uploader("Wybierz plik .har", type=["har"])
+    # KRYTYCZNA ZMIANA: accept_multiple_files=True pozwala na Bulk Upload
+    wgrane_pliki = st.file_uploader("Wybierz pliki .har", type=["har"], accept_multiple_files=True)
     
-    if st.button("🔍 Analizuj wgrany plik"):
-        if not domena_docelowa:
-            st.error("Proszę wpisać domenę sklepu przed analizą.")
-        elif wgrany_plik is not None:
-            with st.spinner("Analiza struktury HAR..."):
-                try:
-                    har_data = json.load(wgrany_plik)
-                    filtered_requests, wykryte_inne = filtruj_logi_har(har_data)
-                    
-                    if not filtered_requests and not wykryte_inne:
-                        st.warning("W tym pliku HAR nie znaleziono żadnych skryptów analitycznych (ani Google, ani systemów alternatywnych). Upewnij się, że plik został poprawnie nagrany.")
-                    else:
-                        czysta_domena = domena_docelowa.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
-                        response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
+    if st.button("🔍 Analizuj wgrane pliki"):
+        if wgrane_pliki:
+            for plik in wgrane_pliki:
+                with st.spinner(f"Analiza pliku: {plik.name}..."):
+                    try:
+                        har_data = json.load(plik)
                         
-                        st.success("Analiza lokalna ukończona!")
-                        parts = response_text.split("```json")
-                        st.markdown(parts[0])
+                        # AUTODETEKCJA DOMENY z nagłówków HAR
+                        czysta_domena = plik.name.replace(".har", "") # Fallback
+                        try:
+                            if "pages" in har_data.get("log", {}) and len(har_data["log"]["pages"]) > 0:
+                                pierwsza_strona = har_data["log"]["pages"][0].get("title", "")
+                                if pierwsza_strona.startswith("http"):
+                                    parsed = urlparse(pierwsza_strona)
+                                    czysta_domena = parsed.hostname.replace("www.", "")
+                        except Exception:
+                            pass
+
+                        filtered_requests, wykryte_inne = filtruj_logi_har(har_data)
                         
-                        if len(parts) > 1:
-                            extracted_json = json.loads(parts[1].split("```")[0].strip())
-                            excel_data_rows.append({
-                                "Domena": czysta_domena,
-                                "Werdykt końcowy": extracted_json.get("verdict"),
-                                "Poziom pewności": extracted_json.get("confidence"),
-                                "Identyfikator usługi (TID)": extracted_json.get("tid"),
-                                "Alternatywne systemy": ", ".join(extracted_json.get("other_systems", [])),
-                                "Kluczowe uzasadnienie": extracted_json.get("reason")
-                            })
-                except Exception as e:
-                    st.error(f"Błąd odczytu pliku: {e}")
+                        # Wyświetlanie wyników w rozwijanym akordeonie dla estetyki
+                        with st.expander(f"Wynik analizy: {czysta_domena} (Plik: {plik.name})", expanded=False):
+                            if not filtered_requests and not wykryte_inne:
+                                st.warning("W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.")
+                                excel_data_rows.append({
+                                    "Domena (z pliku)": czysta_domena,
+                                    "Werdykt końcowy": "Błąd / Brak danych",
+                                    "Poziom pewności": "0%",
+                                    "Identyfikator usługi (TID)": "Brak",
+                                    "Alternatywne systemy": "Brak",
+                                    "Kluczowe uzasadnienie": "Brak zdarzeń sieciowych."
+                                })
+                            else:
+                                response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
+                                parts = response_text.split("```json")
+                                st.markdown(parts[0])
+                                
+                                if len(parts) > 1:
+                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                    excel_data_rows.append({
+                                        "Domena (z pliku)": czysta_domena,
+                                        "Werdykt końcowy": extracted_json.get("verdict"),
+                                        "Poziom pewności": extracted_json.get("confidence"),
+                                        "Identyfikator usługi (TID)": extracted_json.get("tid"),
+                                        "Alternatywne systemy": ", ".join(extracted_json.get("other_systems", [])),
+                                        "Kluczowe uzasadnienie": extracted_json.get("reason")
+                                    })
+                    except Exception as e:
+                        st.error(f"Błąd odczytu pliku {plik.name}: {e}")
         else:
-            st.warning("Najpierw wgraj plik .har.")
+            st.warning("Najpierw wgraj przynajmniej jeden plik .har.")
 
     # --- TABELA ZBIORCZA ---
     if excel_data_rows:
         st.write("")
-        st.subheader("📊 Zbiorcze Zestawienie Wyników")
+        st.subheader("📊 Zbiorcze Zestawienie Wyników (Bulk Export)")
         df = pd.DataFrame(excel_data_rows)
         st.dataframe(df, use_container_width=True)
         
         csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
         st.download_button(
-            label="📥 Pobierz raport CSV",
+            label="📥 Pobierz zbiorczy raport CSV",
             data=csv_data,
-            file_name="Raport_TechStack_GA360.csv",
+            file_name="Zbiorczy_Raport_GA360.csv",
             mime="text/csv"
         )
 
@@ -429,4 +450,4 @@ with tab3:
     * Wybierz opcję **"Save all as HAR with content"** (Zapisz wszystko jako HAR z zawartością).
     """)
     
-    st.success("🎯 Gotowe! Wrzuć wygenerowany plik HAR do analizatora.")
+    st.success("🎯 Gotowe! Wrzuć wygenerowane pliki HAR do analizatora (pojedynczo lub masowo).")
