@@ -5,19 +5,36 @@ import re
 import base64
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
-st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", layout="wide")
+st.set_page_config(page_title="Detektyw GA360 & TechStack", page_icon="🕵️‍♂️", layout="wide")
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
-st.sidebar.markdown("**Wersja: 100% Lokalna analiza plików HAR**")
-st.sidebar.info("Używaj wyłącznie wygenerowanych z przeglądarki plików .har.")
+st.sidebar.markdown("**Wersja: Inteligentna Analiza HAR (Multi-Tracker)**")
+st.sidebar.info("Narzędzie analizuje ekosystem Google (GA360) oraz automatycznie identyfikuje alternatywne systemy analityczne Enterprise i Standard.")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
     filtered_requests = []
+    wykryte_inne = set()
+    
+    # Słownik footprintów innych popularnych systemów analitycznych
+    alternatywne_systemy = {
+        "Adobe Analytics (Enterprise)": ["omtrdc.net", "b/ss", "adobe-analytics", "sc.omtrdc", "insertjs"],
+        "Piwik PRO": ["piwik.pro", "containers.piwik.pro", "ppms.js", "ppms.php"],
+        "Matomo": ["matomo.php", "matomo.js", "/piwik.php", "/piwik.js", "matomo.cloud"],
+        "Amplitude": ["amplitude.com", "api.amplitude.com", "api2.amplitude.com"],
+        "Mixpanel": ["mixpanel.com", "api.mixpanel.com", "api-eu.mixpanel.com"],
+        "Hotjar": ["hotjar.com", "vars.hotjar.com", "static.hotjar.com"]
+    }
+    
     for entry in har_json.get("log", {}).get("entries", []):
         original_url = entry.get("request", {}).get("url", "")
         url_lower = original_url.lower()
+        
+        # KROK NOWY: Skonuj ruch pod kątem alternatywnych systemów trackingowych
+        for system, footprints in alternatywne_systemy.items():
+            if any(fp in url_lower for fp in footprints):
+                wykryte_inne.add(system)
         
         if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".svg", ".gif"]):
             continue
@@ -35,7 +52,6 @@ def filtruj_logi_har(har_json):
         post_data_obj = entry.get("request", {}).get("postData", {})
         post_text = post_data_obj.get("text", "")
         
-        # Dekodowanie ukrytych payloadów (Base64)
         if post_data_obj.get("encoding") == "base64" and post_text:
             try:
                 post_text = base64.b64decode(post_text).decode('utf-8')
@@ -61,12 +77,13 @@ def filtruj_logi_har(har_json):
             "query_string": query_string,
             "post_data": post_text
         })
-    return filtered_requests
+        
+    return filtered_requests, list(wykryte_inne)
 
 # ==========================================
 # SILNIK LOKALNEJ ANALIZY
 # ==========================================
-def analizuj_lokalnie(requests_list, czysta_domena):
+def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     max_ep_per_event = 0
     max_custom_param_len = 0
     max_up_per_event = 0
@@ -200,31 +217,46 @@ def analizuj_lokalnie(requests_list, czysta_domena):
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     miekkie_poszlaki_licznik = sum([1 for r in [r5, r6, r7, r8] if r == "[✅]"])
     
-    if twarda_regula_zlamana:
-        werdykt = "GA 360"
-        pewnosc = "100%"
-    elif r5 == "[✅]" or miekkie_poszlaki_licznik >= 2:
-        werdykt = "Prawdopodobnie GA 360"
-        pewnosc = "75%"
-    elif miekkie_poszlaki_licznik == 1:
-        werdykt = "Darmowe GA4"
-        pewnosc = "80%" 
+    # --- NOWA LOGIKA DYNAMICZNEGO WERDYKTU ---
+    if len(wykryte_ga4_tids) == 0:
+        if wykryte_inne:
+            if "Adobe Analytics (Enterprise)" in wykryte_inne:
+                werdykt = "Adobe Analytics (Enterprise)"
+                pewnosc = "100%"
+            else:
+                werdykt = f"Inny system ({', '.join(wykryte_inne)})"
+                pewnosc = "95%"
+        else:
+            werdykt = "Brak Analityki (Nieznany system)"
+            pewnosc = "90%"
     else:
-        werdykt = "Darmowe GA4"
-        pewnosc = "95%"
+        if twarda_regula_zlamana:
+            werdykt = "GA 360"
+            pewnosc = "100%"
+        elif r5 == "[✅]" or miekkie_poszlaki_licznik >= 2:
+            werdykt = "Prawdopodobnie GA 360"
+            pewnosc = "75%"
+        elif miekkie_poszlaki_licznik == 1:
+            werdykt = "Darmowe GA4"
+            pewnosc = "80%" 
+        else:
+            werdykt = "Darmowe GA4"
+            pewnosc = "95%"
 
-    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak GA4"
+    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak Google Analytics"
     tid_ads_display = f" (+ Ads/DV360: {', '.join(list(wykryte_ads_tids))})" if wykryte_ads_tids else ""
     full_tid_display = tid_ga4_display + tid_ads_display
+    inne_systemy_display = ", ".join(wykryte_inne) if wykryte_inne else "Nie wykryto alternatywnych trackerów"
 
     markdown_output = f"""
 ### 📊 Wynik analizy Google Analytics dla domeny {czysta_domena}
-* **WERDYKT:** {werdykt}
-* **PEWNOŚĆ:** {pewnosc}
+* **WERDYKT:** **{werdykt}**
+* **PEWNOŚĆ:** `{pewnosc}`
 * **Wykryte Measurement ID (tid):** `{full_tid_display}`
+* **Inne systemy analityczne:** `{inne_systemy_display}`
 
 ---
-### 📋 Kontrola Reguł Analitycznych
+### 📋 Kontrola Reguł Analitycznych (Dla ekosystemu Google)
 
 | Stan | Typ reguły | Reguła walidacyjna / Limit | Wynik analizy sieciowej |
 | :---: | :--- | :--- | :--- |
@@ -241,7 +273,8 @@ def analizuj_lokalnie(requests_list, czysta_domena):
         "verdict": werdykt,
         "confidence": pewnosc,
         "tid": full_tid_display,
-        "reason": f"Przeanalizowano {len(wszystkie_zdarzenia)} zdarzeń z plików HAR. Maksymalna l. custom item-scoped: {max_item_params}."
+        "other_systems": wykryte_inne,
+        "reason": f"Przeanalizowano {len(wszystkie_zdarzenia)} zdarzeń Google. Alternatywne systemy: {inne_systemy_display}."
     }
     
     return f"{markdown_output}\n```json\n{json.dumps(json_payload, indent=2)}\n```"
@@ -249,7 +282,7 @@ def analizuj_lokalnie(requests_list, czysta_domena):
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
 # ==========================================
-st.title("🕵️‍♂️ Detektyw GA360")
+st.title("🕵️‍♂️ Detektyw GA360 & TechStack")
 
 tab1, tab2, tab3 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"])
 
@@ -268,13 +301,13 @@ with tab1:
             with st.spinner("Analiza struktury HAR..."):
                 try:
                     har_data = json.load(wgrany_plik)
-                    filtered_requests = filtruj_logi_har(har_data)
+                    filtered_requests, wykryte_inne = filtruj_logi_har(har_data)
                     
-                    if not filtered_requests:
-                        st.warning("Brak skryptów GA4/GMP w tym pliku HAR. Pamiętaj, aby plik był poprawnie nagrany.")
+                    if not filtered_requests and not wykryte_inne:
+                        st.warning("W tym pliku HAR nie znaleziono żadnych skryptów analitycznych (ani Google, ani systemów alternatywnych). Upewnij się, że plik został poprawnie nagrany.")
                     else:
                         czysta_domena = domena_docelowa.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
-                        response_text = analizuj_lokalnie(filtered_requests, czysta_domena)
+                        response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
                         
                         st.success("Analiza lokalna ukończona!")
                         parts = response_text.split("```json")
@@ -287,6 +320,7 @@ with tab1:
                                 "Werdykt końcowy": extracted_json.get("verdict"),
                                 "Poziom pewności": extracted_json.get("confidence"),
                                 "Identyfikator usługi (TID)": extracted_json.get("tid"),
+                                "Alternatywne systemy": ", ".join(extracted_json.get("other_systems", [])),
                                 "Kluczowe uzasadnienie": extracted_json.get("reason")
                             })
                 except Exception as e:
@@ -305,7 +339,7 @@ with tab1:
         st.download_button(
             label="📥 Pobierz raport CSV",
             data=csv_data,
-            file_name="Raport_GA360.csv",
+            file_name="Raport_TechStack_GA360.csv",
             mime="text/csv"
         )
 
@@ -336,7 +370,7 @@ with tab2:
     with st.expander("Reguła 4: Niestandardowe parametry produktu - Item-Scoped (>10)"):
         st.markdown("""
         * **Tło techniczne:** W darmowym GA4 do każdego przedmiotu w tablicy `items` (np. na liście produktów, w koszyku) można dopisać maksymalnie **10 niestandardowych wymiarów**. Wersja **GA360 rozszerza ten limit do 27 parametrów per produkt**.
-        * **Logika detekcji:** Analizujemy strukturę danych e-commerce. Jeśli pojedynczy produkt (niezależnie czy zapisany w nowym formacie `items.0...` czy legacy `pr1ep...`) zawiera więcej niż 10 niestandardowych cech (po wykluczeniu parametrów natywnych typu brand, price, id), system uruchamia twardy werdykt.
+        * **Logika detekcji:** Analizujemy strukturę danych e-commerce. Jeśli pojedynczy produkt zawiera więcej niż 10 niestandardowych cech (po wykluczeniu parametrów natywnych typu brand, price, id), system uruchabia twardy werdykt.
         """)
 
     st.write("")
@@ -344,59 +378,55 @@ with tab2:
 
     with st.expander("Reguła 5: Łączna suma parametrów eventowych w sesji (>50)"):
         st.markdown("""
-        * **Opis:** Łączny limit zarejestrowanych Custom Dimensions dla całej usługi w darmowej wersji wynosi 50, a w GA360 wynosi 125. Jeśli w trakcie jednej, krótkiej sesji zarejestrowanej w pliku HAR system naliczy łącznie ponad 50 unikalnych nazw parametrów `ep.*`, jest to potężna poszlaka wskazująca na budżet i architekturę klasy Enterprise.
+        * **Opis:** Łączny limit zarejestrowanych Custom Dimensions dla całej usługi w darmowej wersji wynosi 50, a w GA360 wynosi 125. Jeśli w trakcie jednej sesji system naliczy łącznie ponad 50 unikalnych nazw parametrów `ep.*`, jest to potężna poszlaka wskazująca na budżet klasy Enterprise.
         """)
 
     with st.expander("Reguła 6: Server-Side Tagging (SST)"):
         st.markdown("""
-        * **Opis:** Przesyłanie logów przez niezależny serwer proxy w domenie 1st-party (np. `stat.sklep.pl`) zamiast bezpośrednio do domen Google. Konfiguracja SST wymaga płatnej infrastruktury w Google Cloud Platform (Cloud Run). Ze względu na koszty i złożoność techniczną, SST jest wdrażany prawie wyłącznie przez duże organizacje, które najczęściej posiadają również licencję GA360.
+        * **Opis:** Przesyłanie logów przez niezależny serwer proxy w domenie 1st-party (np. `stat.sklep.pl`) zamiast bezpośrednio do domen Google. Konfiguracja SST wymaga płatnej infrastruktury chmurowej. Ze względu na koszty i złożoność techniczną, SST jest wdrażany prawie wyłącznie przez duże organizacje.
         """)
 
     with st.expander("Reguła 7: Korporacyjny Multi-tagging (Zbiory Roll-up)"):
         st.markdown("""
-        * **Opis:** Wysyłanie identycznych pakietów danych jednocześnie do kilku różnych identyfikatorów pomiarowych (`tid` zaczynających się od `G-` lub `AW-`). Rozwiązanie to jest powszechnie stosowane w grupach kapitałowych i międzynarodowych e-commerce w celu agregacji danych lokalnych do jednej globalnej usługi centralnej.
+        * **Opis:** Wysyłanie identycznych pakietów danych jednocześnie do kilku różnych identyfikatorów pomiarowych (`tid`). Rozwiązanie to jest powszechnie stosowane w grupach kapitałowych i międzynarodowych e-commerce w celu agregacji danych lokalnych do jednej globalnej usługi centralnej.
         """)
 
     with st.expander("Reguła 8: Ekosystem Google Marketing Platform (GMP)"):
         st.markdown("""
-        * **Opis:** Wykrycie w strumieniu sieciowym śladów zaawansowanych systemów reklamowych Google klasy premium (Campaign Manager 360, Display & Video 360, Search Ads 360). Objawia się to obecnością żądań do domen Doubleclick, wywołaniami skryptów Floodlight (`/activityi`), czy identyfikatorami z prefiksem `DC-`. Integracje te są natywną domeną płatnego pakietu GA360.
+        * **Opis:** Wykrycie w strumieniu sieciowym śladów zaawansowanych systemów reklamowych Google klasy premium (Campaign Manager 360, Display & Video 360, Search Ads 360). Integracje te są natywną domeną płatnego pakietu GA360.
         """)
 
 with tab3:
     st.title("📥 Instrukcja Generowania Wartościowych Plików .HAR")
-    st.markdown("Aby algorytm matematyczny poprawnie przeanalizował strukturę danych i wykrył limity Google Analytics 360, plik logów sieciowych musi zostać wygenerowany zgodnie z poniższą procedurą. **Błędy na tym etapie uniemożliwią poprawną diagnozę.**")
-    
-    st.info("💡 **Analityczna wskazówka:** Co to jest plik .HAR? To kompletny zapis chronologiczny całej komunikacji sieciowej między Twoją przeglądarką a serwerami zewnętrznymi w trakcie trwania sesji.")
+    st.markdown("Aby algorytm matematyczny poprawnie przeanalizował strukturę danych i wykrył systemy analityczne, plik logów sieciowych musi zostać wygenerowany zgodnie z poniższą procedurą.")
     
     st.markdown("""
     ### 🛠️ Instrukcja Krok po Kroku dla Konsultantów i Handlowców:
     
     #### 1️⃣ Krok 1: Przygotowanie czystego środowiska (Tryb Incognito)
-    * Zawsze otwieraj badany serwis w **nowym oknie incognito** przeglądarki (`Ctrl+Shift+N` na Windows lub `Cmd+Shift+N` na Mac).
-    * *Dlaczego?* Pozwala to całkowicie ominąć pliki cookie zapisane w pamięci podręcznej (cache). Dzięki temu wymusisz na stronie ponowne wyświetlenie baneru prywatności oraz pełne załadowanie wszystkich skryptów inicjujących od zera.
+    * Zawsze otwieraj badany serwis w **nowym oknie incognito** przeglądarki (`Ctrl+Shift+N` lub `Cmd+Shift+N`).
+    * *Dlaczego?* Pozwala to całkowicie ominąć pliki cookie zapisane w pamięci podręcznej. Dzięki temu wymusisz na stronie ponowne wyświetlenie baneru prywatności oraz pełne załadowanie wszystkich skryptów inicjujących od zera.
     
     #### 2️⃣ Krok 2: Uruchomienie zakładki Network w DevTools
-    * Wejdź na stronę główną witryny, kliknij klawisz **F12** (lub kliknij prawym przyciskiem myszy w dowolnym miejscu i wybierz **Zbadaj**).
+    * Wejdź na stronę główną witryny, kliknij klawisz **F12** (lub kliknij prawym przyciskiem myszy i wybierz **Zbadaj**).
     * Przejdź do górnej zakładki **Network** (Sieć).
     
     #### 3️⃣ Krok 3: Konfiguracja pancernego nagrywania (Preserve Log)
-    * Upewnij się, że okrągła ikona nagrywania w lewym górnym rogu DevTools świeci się na **czerwono** (oznacza to, że ruch jest rejestrowany).
-    * ⚠️ **NAJWAŻNIEJSZY ELEMENT:** Bezwzględnie zaznacz checkbox **"Preserve log"** (Zachowaj logi). Jeśli tego nie zrobisz, w momencie przejścia ze strony głównej na kartę produktu przeglądarka wyczyści dotychczas zebrany ruch sieciowy i stracisz kluczowe dane startowe!
+    * Upewnij się, że okrągła ikona nagrywania w lewym górnym rogu DevTools świeci się na **czerwono**.
+    * ⚠️ **NAJWAŻNIEJSZY ELEMENT:** Bezwzględnie zaznacz checkbox **"Preserve log"** (Zachowaj logi). Jeśli tego nie zrobisz, w momencie przejścia ze strony głównej na podstronę przeglądarka wyczyści dotychczas zebrany ruch sieciowy!
     
     #### 4️⃣ Krok 4: KROK KRYTYCZNY – Pełna akceptacja Cookies
     * Odśwież stronę (`F5`). Poczekaj na pojawienie się baneru zarządzania prywatnością (CMP).
-    * **Kliknij przycisk pełnej akceptacji wszystkich zgód marketingowych i analitycznych** (szukaj fraz: *'Akceptuję wszystko'*, *'Zgadzam się'*, *'Akceptuj wszystkie cookies'*).
-    * *Dlaczego to ważne?* Jeśli zamkniesz baner krzyżykiem lub odrzucisz zgody, witryna przejdzie w restrykcyjny tryb **Consent Mode**. W tym trybie tagi reklamowe i zaawansowana analityka e-commerce zostaną całkowicie zablokowane przez przeglądarkę, a nasz detektyw doliczy się 0 zdarzeń!
+    * **Kliknij przycisk pełnej akceptacji wszystkich zgód marketingowych i analitycznych** (np. *'Akceptuję wszystko'*, *'Zgadzam się'*, *'Akceptuj wszystkie cookies'*).
+    * *Dlaczego to ważne?* Bez akceptacji zgód, systemy analityczne Enterprise zostaną całkowicie zablokowane i nie wygenerują ruchu w pliku HAR!
     
     #### 5️⃣ Krok 5: Przejście pełnej ścieżki e-commerce
-    * Nie kończ nagrywania na stronie głównej. Kliknij w dowolny produkt i przejdź na **kartę produktu**.
-    * **Przescrolluj kartę produktu powoli do samego dołu.** Wiele nowoczesnych systemów stosuje mechanizm *lazy-loadingu* i odpala bogate skrypty analityczne (w tym customowe parametry produktu) dopiero wtedy, gdy użytkownik fizycznie dotrze ekranem do konkretnych sekcji strony.
-    * Opcjonalnie: Dodaj produkt do koszyka lub skorzystaj z wyszukiwarki wewnętrznej. Im więcej zdarzeń wygenerujesz, tym więcej twardych dowodów dostarczysz do analizatora.
+    * Kliknij w dowolny produkt i przejdź na **kartę produktu**.
+    * **Przescrolluj stronę powoli do samego dołu.** Wiele nowoczesnych systemów stosuje mechanizm *lazy-loadingu* i odpala skrypty analityczne dopiero wtedy, gdy użytkownik fizycznie dotrze ekranem do konkretnych sekcji strony.
     
     #### 6️⃣ Krok 6: Eksport pliku .HAR
-    * Po zakończeniu ścieżki kliknij **prawym przyciskiem myszy** w dowolnym miejscu na liście zarejestrowanych żądań sieciowych w panelu DevTools.
+    * Kliknij **prawym przyciskiem myszy** w dowolnym miejscu na liście zarejestrowanych żądań w panelu DevTools.
     * Wybierz opcję **"Save all as HAR with content"** (Zapisz wszystko jako HAR z zawartością).
-    * Zapisz plik na dysku, a następnie wgraj go w polu analizatora w aplikacji.
     """)
     
-    st.success("🎯 Gotowe! Tak przygotowany plik HAR gwarantuje 100% precyzji w wykrywaniu systemów klasy enterprise.")
+    st.success("🎯 Gotowe! Wrzuć wygenerowany plik HAR do analizatora.")
