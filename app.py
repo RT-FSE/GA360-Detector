@@ -287,8 +287,10 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}%, Dane_Event: {int(data_score_ep)}%, Dane_Sesja: {int(data_score_gl)}%)"
     }
     
-    return f"{markdown_output}\n```json\n{json.dumps(json_payload, indent=2)}\n
-```"
+return f"""{markdown_output}
+```json
+{json.dumps(json_payload, indent=2)}
+```"""
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
