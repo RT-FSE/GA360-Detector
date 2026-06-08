@@ -215,16 +215,17 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
 
-    # --- MATEMATYKA (DYNAMIC SCORING) ---
+    # --- MATEMATYKA (DYNAMIC SCORING) - NAPRAWIONY BŁĄD ZAOKRĄGLEŃ UŁAMKÓW ---
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
     if r8 == "[✅]": infra_score += 10
     if r7 == "[✅]": infra_score += 10
     
-    data_score_ep = min((max_ep_per_event / 25) * 40, 40)
-    data_score_gl = min((len(globalne_ep_params) / 50) * 29, 29)
+    # Funkcja int() obcina ułamki natychmiast, aby uniknąć błędów przy ich sumowaniu
+    data_score_ep = int(min((max_ep_per_event / 25) * 40, 40))
+    data_score_gl = int(min((len(globalne_ep_params) / 50) * 29, 29))
     
-    total_score = int(infra_score + data_score_ep + data_score_gl)
+    total_score = infra_score + data_score_ep + data_score_gl
 
     if len(wykryte_ga4_tids) == 0:
         werdykt = "Brak Google Analytics"
@@ -237,7 +238,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         else:
             pewnosc = "90%"
     else:
-        uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/30, Dane_Event: {int(data_score_ep)}/40, Dane_Sesja: {int(data_score_gl)}/29)"
+        uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/30 pkt, Dane_Event: {data_score_ep}/40 pkt, Dane_Sesja: {data_score_gl}/29 pkt)"
         
         # INWERSJA PEWNOŚCI DLA DARMOWEGO GA4
         if twarda_regula_zlamana:
@@ -288,7 +289,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     }
     
     json_str = json.dumps(json_payload, indent=2)
-    return markdown_output + "\n```json\n" + json_str + "\n```"
+    return markdown_output + "\n```json\n" + json_str + "\n
+```"
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
@@ -340,7 +342,8 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("
+```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
@@ -412,7 +415,7 @@ with tab2:
         * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny. Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów w sesji.
         
         **Kiedy Pewność (%) zachowuje się inaczej niż wyliczone Punkty?**
-        * **Przypadek 1 (Wysoka pewność darmowego GA4):** Sklep zdobył tylko 23/99 punktów, co oznacza, że szansa na posiadanie płatnego GA360 jest znikoma (23%). Wtedy system dokonuje inwersji i stwierdza: Skoro mam 23% szans na GA360, to moja pewność, że jest to Darmowe GA4 wynosi aż **77%** (`100 - 23`). 
+        * **Przypadek 1 (Wysoka pewność darmowego GA4):** Sklep zdobył tylko 22/99 punktów, co oznacza, że szansa na posiadanie płatnego GA360 jest znikoma. Wtedy system dokonuje inwersji i stwierdza: Skoro mam ułamek szans na GA360, to moja pewność, że jest to Darmowe GA4 wynosi aż **78%** (`100 - 22`). 
         * **Przypadek 2 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
         * **Przypadek 3 (Brak GA, Wykryto inny system):** Brak logów Google daje 0 punktów w algorytmie. Jeśli jednak skrypt wyłapie np. tagi Adobe Analytics, automatycznie ustawia Pewność na 100% (będąc pewnym, że to klient z Adobe). W kolumnie uzasadnienia nie zobaczysz wtedy tabeli punktów, a dedykowany komunikat o analizie footprintów konkurencji.
         """)
