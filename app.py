@@ -9,7 +9,7 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
-st.sidebar.caption("Wersja: 104")
+st.sidebar.caption("Wersja: 14")
 st.sidebar.info("Moduł automatyczny został wyłączony w celu zapewnienia maksymalnej dokładności danych. Wgraj jeden lub wiele plików .har jednocześnie.")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
