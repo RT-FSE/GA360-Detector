@@ -5,7 +5,7 @@ import re
 import base64
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
-st.set_page_config(page_title="Detektyw GA360 & TechStack", page_icon="🕵️‍♂️", layout="wide")
+st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", layout="wide")
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.title("⚙️ Tryb Pracy Agenta")
@@ -17,7 +17,6 @@ def filtruj_logi_har(har_json):
     filtered_requests = []
     wykryte_inne = set()
     
-    # Słownik footprintów innych popularnych systemów analitycznych
     alternatywne_systemy = {
         "Adobe Analytics (Enterprise)": ["omtrdc.net", "b/ss", "adobe-analytics", "sc.omtrdc", "insertjs"],
         "Piwik PRO": ["piwik.pro", "containers.piwik.pro", "ppms.js", "ppms.php"],
@@ -80,7 +79,7 @@ def filtruj_logi_har(har_json):
     return filtered_requests, list(wykryte_inne)
 
 # ==========================================
-# SILNIK LOKALNEJ ANALIZY
+# SILNIK LOKALNEJ ANALIZY (Dynamic Scoring)
 # ==========================================
 def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     max_ep_per_event = 0
@@ -105,7 +104,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         parsed_url = urlparse(original_url)
         hostname = parsed_url.hostname or ""
         
-        # Weryfikacja Server-Side Tagging na podstawie autowykrytej domeny
         if czysta_domena != "Nieznana domena" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
@@ -215,10 +213,19 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r8 = "[✅]" if gmp_detected == "Tak" else "[❌]"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
-    miekkie_poszlaki_licznik = sum([1 for r in [r5, r6, r7, r8] if r == "[✅]"])
-    
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
+
+    # --- NOWA MATEMATYKA (DYNAMIC SCORING) ---
+    infra_score = 0
+    if r6 == "[✅]": infra_score += 10
+    if r8 == "[✅]": infra_score += 10
+    if r7 == "[✅]": infra_score += 10
     
+    data_score_ep = min((max_ep_per_event / 25) * 40, 40)
+    data_score_gl = min((len(globalne_ep_params) / 50) * 29, 29)
+    
+    total_score = infra_score + data_score_ep + data_score_gl
+
     if len(wykryte_ga4_tids) == 0:
         if wykryte_inne:
             if "Adobe Analytics (Enterprise)" in wykryte_inne:
@@ -234,18 +241,18 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         if twarda_regula_zlamana:
             werdykt = "GA 360"
             pewnosc = "100%"
-        elif puste_zdarzenia_ga4 and miekkie_poszlaki_licznik > 0:
-            werdykt = "Darmowe GA4 (Puste parametry)"
-            pewnosc = "85%"
-        elif r5 == "[✅]" or miekkie_poszlaki_licznik >= 2:
+        elif total_score >= 60:
             werdykt = "Prawdopodobnie GA 360"
-            pewnosc = "75%"
-        elif miekkie_poszlaki_licznik == 1:
-            werdykt = "Darmowe GA4"
-            pewnosc = "80%" 
+            pewnosc = f"{int(total_score)}%"
+        elif infra_score >= 20 and total_score < 60:
+            werdykt = "Darmowe GA4 (Zaawansowana infrastruktura)"
+            pewnosc = f"{int(total_score)}%"
+        elif puste_zdarzenia_ga4:
+            werdykt = "Darmowe GA4 (Puste parametry)"
+            pewnosc = f"{int(total_score)}%"
         else:
             werdykt = "Darmowe GA4"
-            pewnosc = "95%"
+            pewnosc = f"{int(total_score)}%"
 
     tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak Google Analytics"
     tid_ads_display = f" (+ Ads/DV360: {', '.join(list(wykryte_ads_tids))})" if wykryte_ads_tids else ""
@@ -254,7 +261,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
 
     markdown_output = f"""
 * **WERDYKT:** **{werdykt}**
-* **PEWNOŚĆ:** `{pewnosc}`
+* **SCORING GA360 (Pewność):** `{pewnosc}`
 * **Wykryte Measurement ID (tid):** `{full_tid_display}`
 * **Inne systemy analityczne:** `{inne_systemy_display}`
 
@@ -277,15 +284,16 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "confidence": pewnosc,
         "tid": full_tid_display,
         "other_systems": wykryte_inne,
-        "reason": f"Przeanalizowano {len(wszystkie_zdarzenia)} zdarzeń Google. Alternatywne systemy: {inne_systemy_display}."
+        "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}%, Dane_Event: {int(data_score_ep)}%, Dane_Sesja: {int(data_score_gl)}%)"
     }
     
-    return f"{markdown_output}\n```json\n{json.dumps(json_payload, indent=2)}\n```"
+    return f"{markdown_output}\n```json\n{json.dumps(json_payload, indent=2)}\n
+```"
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
 # ==========================================
-st.title("🕵️‍♂️ Detektyw GA360 & TechStack")
+st.title("🕵️‍♂️ GA360 Detector")
 
 tab1, tab2, tab3 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"])
 
@@ -294,7 +302,6 @@ with tab1:
 
     st.markdown("Wyeksportuj pliki `.har` ze swojej przeglądarki i wgraj je poniżej. **Możesz przeciągnąć wiele plików naraz.**")
     
-    # KRYTYCZNA ZMIANA: accept_multiple_files=True pozwala na Bulk Upload
     wgrane_pliki = st.file_uploader("Wybierz pliki .har", type=["har"], accept_multiple_files=True)
     
     if st.button("🔍 Analizuj wgrane pliki"):
@@ -304,8 +311,7 @@ with tab1:
                     try:
                         har_data = json.load(plik)
                         
-                        # AUTODETEKCJA DOMENY z nagłówków HAR
-                        czysta_domena = plik.name.replace(".har", "") # Fallback
+                        czysta_domena = plik.name.replace(".har", "")
                         try:
                             if "pages" in har_data.get("log", {}) and len(har_data["log"]["pages"]) > 0:
                                 pierwsza_strona = har_data["log"]["pages"][0].get("title", "")
@@ -317,14 +323,13 @@ with tab1:
 
                         filtered_requests, wykryte_inne = filtruj_logi_har(har_data)
                         
-                        # Wyświetlanie wyników w rozwijanym akordeonie dla estetyki
                         with st.expander(f"Wynik analizy: {czysta_domena} (Plik: {plik.name})", expanded=False):
                             if not filtered_requests and not wykryte_inne:
                                 st.warning("W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.")
                                 excel_data_rows.append({
                                     "Domena (z pliku)": czysta_domena,
                                     "Werdykt końcowy": "Błąd / Brak danych",
-                                    "Poziom pewności": "0%",
+                                    "Scoring GA360": "0%",
                                     "Identyfikator usługi (TID)": "Brak",
                                     "Alternatywne systemy": "Brak",
                                     "Kluczowe uzasadnienie": "Brak zdarzeń sieciowych."
@@ -335,11 +340,12 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("
+```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
-                                        "Poziom pewności": extracted_json.get("confidence"),
+                                        "Scoring GA360": extracted_json.get("confidence"),
                                         "Identyfikator usługi (TID)": extracted_json.get("tid"),
                                         "Alternatywne systemy": ", ".join(extracted_json.get("other_systems", [])),
                                         "Kluczowe uzasadnienie": extracted_json.get("reason")
@@ -360,7 +366,7 @@ with tab1:
         st.download_button(
             label="📥 Pobierz zbiorczy raport CSV",
             data=csv_data,
-            file_name="Zbiorczy_Raport_GA360.csv",
+            file_name="Zbiorczy_Raport_GA360_Detector.csv",
             mime="text/csv"
         )
 
@@ -395,26 +401,21 @@ with tab2:
         """)
 
     st.write("")
-    st.subheader("🟡 Miękkie Poszlaki Kontekstowe (Analiza Biznesowa)")
+    st.subheader("🟡 Dynamiczny Scoring Kontekstowy (Analiza Gęstości Danych)")
 
-    with st.expander("Reguła 5: Łączna suma parametrów eventowych w sesji (>50)"):
+    with st.expander("Punktacja: Łączna suma parametrów eventowych w sesji (Max 29%)"):
         st.markdown("""
-        * **Opis:** Łączny limit zarejestrowanych Custom Dimensions dla całej usługi w darmowej wersji wynosi 50, a w GA360 wynosi 125. Jeśli w trakcie jednej sesji system naliczy łącznie ponad 50 unikalnych nazw parametrów `ep.*`, jest to potężna poszlaka wskazująca na budżet klasy Enterprise.
+        * **Opis:** Algorytm przydziela proporcjonalne punkty w zależności od zagęszczenia słownika danych, dążąc do granicy 50 unikalnych parametrów `ep.*` w sesji.
         """)
 
-    with st.expander("Reguła 6: Server-Side Tagging (SST)"):
+    with st.expander("Punktacja: Gęstość pojedynczego zdarzenia (Max 40%)"):
         st.markdown("""
-        * **Opis:** Przesyłanie logów przez niezależny serwer proxy w domenie 1st-party (np. `stat.sklep.pl`) zamiast bezpośrednio do domen Google. Konfiguracja SST wymaga płatnej infrastruktury chmurowej. Ze względu na koszty i złożoność techniczną, SST jest wdrażany prawie wyłącznie przez duże organizacje.
+        * **Opis:** System weryfikuje obciążenie największego pojedynczego pakietu w pliku HAR i nagradza wdrożenia, w których do jednego zdarzenia "upakowano" bardzo dużą liczbę danych, zbliżając się do sztywnych ram darmowej analityki.
         """)
-
-    with st.expander("Reguła 7: Korporacyjny Multi-tagging (Zbiory Roll-up)"):
+        
+    with st.expander("Punktacja: Infrastruktura i Multi-Tagging (Max 30%)"):
         st.markdown("""
-        * **Opis:** Wysyłanie identycznych pakietów danych jednocześnie do kilku różnych identyfikatorów pomiarowych (`tid`). Rozwiązanie to jest powszechnie stosowane w grupach kapitałowych i międzynarodowych e-commerce w celu agregacji danych lokalnych do jednej globalnej usługi centralnej.
-        """)
-
-    with st.expander("Reguła 8: Ekosystem Google Marketing Platform (GMP)"):
-        st.markdown("""
-        * **Opis:** Wykrycie w strumieniu sieciowym śladów zaawansowanych systemów reklamowych Google klasy premium (Campaign Manager 360, Display & Video 360, Search Ads 360). Integracje te są natywną domeną płatnego pakietu GA360.
+        * **Opis:** System przyznaje punkty bazowe za używanie Server-Side Tagging (10%), Google Marketing Platform - Floodlight (10%) oraz jednoczesne śledzenie do wielu identyfikatorów pomiarowych, tzw. Roll-up Properties (10%).
         """)
 
 with tab3:
