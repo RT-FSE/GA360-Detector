@@ -283,14 +283,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "verdict": werdykt,
         "confidence": pewnosc,
         "tid": full_tid_display,
-        "other_systems": wykryte_inne,
+        "other_systems": list(wykryte_inne),
         "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}%, Dane_Event: {int(data_score_ep)}%, Dane_Sesja: {int(data_score_gl)}%)"
     }
     
-return f"""{markdown_output}
-```json
-{json.dumps(json_payload, indent=2)}
-```"""
+    # Bezpieczne renderowanie JSON do formatu Markdown
+    json_str = json.dumps(json_payload, indent=2)
+    return f"{markdown_output}\n```json\n{json_str}\n```"
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
@@ -342,8 +341,7 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("
-```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
