@@ -215,7 +215,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
 
-    # --- NOWA MATEMATYKA (DYNAMIC SCORING) ---
+    # --- NOWA MATEMATYKA (DYNAMIC SCORING z punktami zamiast %) ---
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
     if r8 == "[✅]": infra_score += 10
@@ -280,11 +280,12 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "confidence": pewnosc,
         "tid": tid_ga4_display,
         "other_systems_text": inny_system_display,
-        "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}%, Dane_Event: {int(data_score_ep)}%, Dane_Sesja: {int(data_score_gl)}%)"
+        "reason": f"Scoring: {int(total_score)}% (Infra: {infra_score}/30 pkt, Dane_Event: {int(data_score_ep)}/40 pkt, Dane_Sesja: {int(data_score_gl)}/29 pkt)"
     }
     
     json_str = json.dumps(json_payload, indent=2)
-    return f"{markdown_output}\n```json\n{json_str}\n```"
+    return f"{markdown_output}\n```json\n{json_str}\n
+```"
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
@@ -336,7 +337,8 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("
+```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
@@ -398,19 +400,17 @@ with tab2:
     st.write("")
     st.subheader("🟡 Dynamiczny Scoring Kontekstowy (Analiza Gęstości Danych)")
 
-    with st.expander("Punktacja: Łączna suma parametrów eventowych w sesji (Max 29%)"):
+    with st.expander("Jak czytać Uzasadnienie Scoringu w Excelu? (Instrukcja dekodowania)"):
         st.markdown("""
-        * **Opis:** Algorytm przydziela proporcjonalne punkty w zależności od zagęszczenia słownika danych, dążąc do granicy 50 unikalnych parametrów `ep.*` w sesji.
-        """)
+        Ostateczna pewność systemu (np. **84%**) to suma zdobytych punktów na przestrzeni analizy infrastruktury i danych. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz zawsze rozbicie wyniku na 3 kategorie w formacie punktów (*pkt*):
 
-    with st.expander("Punktacja: Gęstość pojedynczego zdarzenia (Max 40%)"):
-        st.markdown("""
-        * **Opis:** System weryfikuje obciążenie największego pojedynczego pakietu w pliku HAR i nagradza wdrożenia, w których do jednego zdarzenia "upakowano" bardzo dużą liczbę danych, zbliżając się do sztywnych ram darmowej analityki.
-        """)
+        * **Infra (max 30 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za: Server-Side Tagging, ekosystem reklamowy Floodlight (GMP) oraz Multi-tagging. Im więcej punktów, tym zasobniejszy technologicznie jest podmiot.
+        * **Dane_Event (max 40 pkt):** Ocenia ciężar największego pojedynczego kliknięcia. Im bliżej darmowego limitu 25 parametrów w jednym hicie, tym więcej punktów. Wynik 0 pkt oznacza analitykę "z pudełka" (brak własnych zmiennych). 
+        * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny (ile unikalnych parametrów w ogóle jest zaimplementowanych na stronie). Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów.
         
-    with st.expander("Punktacja: Infrastruktura i Multi-Tagging (Max 30%)"):
-        st.markdown("""
-        * **Opis:** System przyznaje punkty bazowe za używanie Server-Side Tagging (10%), Google Marketing Platform - Floodlight (10%) oraz jednoczesne śledzenie do wielu identyfikatorów pomiarowych, tzw. Roll-up Properties (10%).
+        **Przykłady z życia wzięte:**
+        * `Scoring: 20% (Infra: 20/30 pkt, Dane_Event: 0/40 pkt, Dane_Sesja: 0/29 pkt)` ➡️ Klasyczne puste, darmowe GA4 bez żadnych parametrów, ale postawione na własnym serwerze (najpewniej w celu ratowania Facebook Ads).
+        * `Scoring: 84% (Infra: 20/30 pkt, Dane_Event: 40/40 pkt, Dane_Sesja: 24/29 pkt)` ➡️ Potężny e-commerce, prawdopodobnie GA360. Mają płatny ekosystem i maksymalnie "upchane" danymi zdarzenia, które w zwykłym GA4 zostałyby ucięte.
         """)
 
 with tab3:
