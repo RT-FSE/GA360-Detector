@@ -284,8 +284,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     }
     
     json_str = json.dumps(json_payload, indent=2)
-    return f"{markdown_output}\n```json\n{json_str}\n
-```"
+    # BEZPIECZNY RETURN: Konkatenacja chroni przed błędem parsera f-stringów
+    return markdown_output + "\n```json\n" + json_str + "\n```"
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
@@ -337,8 +337,7 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("
-```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
