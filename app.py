@@ -260,6 +260,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     inny_system_display = f"Tak, {', '.join(wykryte_inne)}" if wykryte_inne else "Nie"
 
     markdown_output = f"""
+* **DOMENA / SERWIS:** `{czysta_domena}`
 * **WERDYKT:** **{werdykt}**
 * **PEWNOŚĆ WERDYKTU:** `{pewnosc}`
 * **INNY SYSTEM ANALITYCZNY:** `{inny_system_display}`
@@ -290,7 +291,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     # BEZPIECZNE ZWRACANIE WYNIKU
     json_str = json.dumps(json_payload, indent=2)
     znacznik_start = "\n```json\n"
-    znacznik_koniec = "\n```"
+    znacznik_koniec = "\n
+```"
     
     return markdown_output + znacznik_start + json_str + znacznik_koniec
 
@@ -327,7 +329,7 @@ with tab1:
 
                         filtered_requests, wykryte_inne = filtruj_logi_har(har_data)
                         
-                        with st.expander(f"Wynik analizy: {czysta_domena} (Plik: {plik.name})", expanded=False):
+                        with st.expander(f"{czysta_domena} - Analiza wyniku (Plik: {plik.name})", expanded=False):
                             if not filtered_requests and not wykryte_inne:
                                 st.warning("W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.")
                                 excel_data_rows.append({
@@ -344,7 +346,8 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split("
+```")[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
