@@ -9,13 +9,13 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
-st.sidebar.caption("Wersja: 19")
+st.sidebar.caption("Wersja: 21")
 
 st.sidebar.info("""
-**🔄 Co nowego w wersji 19?**
-* **Granularna analiza CM360:** System osobno ocenia i wyświetla (Tak/Nie) obecność poszczególnych sygnatur Ad Servera (`/ddm/`, `cost`, `qty`, `dclid`), tworząc precyzyjny raport z wdrożenia.
+**🔄 Co nowego w wersji 21?**
+* **Fix wyświetlania CM360:** Naprawiono błąd renderowania tabeli Markdown – teraz wszystkie cztery sygnatury Ad Servera są w pełni widoczne.
+* **Rebalans Scoringu:** Zwiększono wagę kategorii Infrastruktura (do 40 pkt). Wykrycie Campaign Managera 360 daje teraz aż 20 punktów, dwukrotnie więcej niż zwykłe DV360.
 * **Nowa nomenklatura reguł:** Uporządkowano nazewnictwo w tabeli wyników według przejrzystego schematu (Typ Główny + Doprecyzowanie).
-* **Przejrzysty podział GMP:** Rozbicie tabeli na bloki Campaign Manager 360 vs Display & Video 360.
 """)
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
@@ -40,7 +40,6 @@ def filtruj_logi_har(har_json):
             if any(fp in url_lower for fp in footprints):
                 wykryte_inne.add(system)
         
-        # Wyjątek: nie blokujemy skryptów dcmads.js, które mogą być dowodem na CM360
         if not "dcmads.js" in url_lower:
             if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".svg", ".gif"]):
                 continue
@@ -99,10 +98,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     wykryte_ads_tids = set()
     server_side_domain = "Nie"
     
-    # Detekcja GMP (CM360 vs DV360)
     gmp_evidence = False
     
-    # Granularna detekcja CM360
     cm360_ddm = False
     cm360_cost = False
     cm360_qty = False
@@ -124,11 +121,9 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         if czysta_domena != "Nieznana domena" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
-        # Wykrywanie ogólnej infrastruktury DV360/GMP
         if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in url_lower for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
             gmp_evidence = True
             
-        # Wykrywanie twardych sygnatur CM360 (ścieżki ddm, skrypty dcm, identyfikator dclid)
         if any(x in url_lower for x in ["/ddm/", "dcmads.js"]):
             cm360_ddm = True
             
@@ -175,7 +170,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         original_url = event["url"]
         url_lower = original_url.lower()
         
-        # Weryfikacja parametrów e-commerce w Floodlightach (cost, qty)
         if any(x in url_lower for x in ["doubleclick.net", "/activityi", "/ddm/"]):
             if "cost" in params:
                 cm360_cost = True
@@ -246,17 +240,17 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r6 = "[✅]" if server_side_domain != "Nie" else "[❌]"
     r7 = "[✅]" if len(wykryte_ga4_tids) > 1 else "[❌]"
     
-    # Agregacja dla CM360
     cm360_evidence = cm360_ddm or cm360_cost or cm360_qty or cm360_dclid
     r8 = "[✅]" if cm360_evidence else "[❌]"
     r9 = "[✅]" if gmp_evidence else "[❌]"
     
-    # Przygotowanie stringa ze szczegółami dla CM360
     cm360_ddm_str = "Tak" if cm360_ddm else "Nie"
     cm360_cost_str = "Tak" if cm360_cost else "Nie"
     cm360_qty_str = "Tak" if cm360_qty else "Nie"
     cm360_dclid_str = "Tak" if cm360_dclid else "Nie"
-    cm360_szczegoly = f"/ddm/: {cm360_ddm_str} | cost: {cm360_cost_str} | qty: {cm360_qty_str} | dclid: {cm360_dclid_str}"
+    
+    # Używamy przecinków zamiast pionowej kreski, aby nie popsuć tabeli w Markdownie
+    cm360_szczegoly = f"**/ddm/:** {cm360_ddm_str}, **cost:** {cm360_cost_str}, **qty:** {cm360_qty_str}, **dclid:** {cm360_dclid_str}"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
@@ -265,9 +259,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
     if r7 == "[✅]": infra_score += 10
-    if gmp_evidence: infra_score += 10  # Max 10 pkt za ekosystem GMP (niezależnie czy CM czy DV)
     
-    data_score_ep = int(min((max_ep_per_event / 25) * 40, 40))
+    if cm360_evidence:
+        infra_score += 20  # Wdrożenie premium CM360 (max punktów)
+    elif gmp_evidence:
+        infra_score += 10  # Podstawowe wdrożenie DV360
+    
+    data_score_ep = int(min((max_ep_per_event / 25) * 30, 30))
     data_score_gl = int(min((len(globalne_ep_params) / 50) * 29, 29))
     
     total_score = infra_score + data_score_ep + data_score_gl
@@ -283,7 +281,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         else:
             pewnosc = "90%"
     else:
-        uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/30 pkt, Dane_Event: {data_score_ep}/40 pkt, Dane_Sesja: {data_score_gl}/29 pkt)"
+        uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/40 pkt, Dane_Event: {data_score_ep}/30 pkt, Dane_Sesja: {data_score_gl}/29 pkt)"
         
         if twarda_regula_zlamana:
             werdykt = "GA 360"
@@ -456,14 +454,13 @@ with tab2:
         System rozróżnia dwa pojęcia: **Pewność Werdyktu (%)** oraz **Punkty analityczne (max 99 pkt)**. 
         Zazwyczaj te liczby są takie same. Rozjazd pojawia się w specyficznych sytuacjach, co pozwala zachować precyzję detekcji. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz rozbicie punktów na kategorie:
 
-        * **Infra (max 30 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za: Server-Side Tagging, ekosystem reklamowy Floodlight (GMP) oraz Multi-tagging.
-        * **Dane_Event (max 40 pkt):** Ocenia ciężar największego pojedynczego kliknięcia. Im bliżej darmowego limitu 25 parametrów w jednym hicie, tym więcej punktów. Wynik 0 pkt oznacza analitykę "z pudełka" (brak własnych zmiennych). 
+        * **Infra (max 40 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za Server-Side Tagging, 10 pkt za Multi-tagging, oraz aż **20 pkt za wykrycie Campaign Managera 360** (lub 10 pkt za standardowe DV360).
+        * **Dane_Event (max 30 pkt):** Ocenia ciężar największego pojedynczego kliknięcia. Im bliżej darmowego limitu 25 parametrów w jednym hicie, tym więcej punktów. Wynik 0 pkt oznacza analitykę "z pudełka" (brak własnych zmiennych). 
         * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny. Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów w sesji.
         
         **Kiedy Pewność (%) zachowuje się inaczej niż wyliczone Punkty?**
         * **Przypadek 1 (Wysoka pewność darmowego GA4):** Sklep zdobył tylko 22/99 punktów, co oznacza, że szansa na posiadanie płatnego GA360 jest znikoma. Wtedy system dokonuje inwersji i stwierdza: Skoro mam ułamek szans na GA360, to moja pewność, że jest to Darmowe GA4 wynosi aż **78%** (`100 - 22`). 
         * **Przypadek 2 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
-        * **Przypadek 3 (Brak GA, Wykryto inny system):** Brak logów Google daje 0 punktów w algorytmie. Jeśli jednak skrypt wyłapie np. tagi Adobe Analytics, automatycznie ustawia Pewność na 100% (będąc pewnym, że to klient z Adobe). W kolumnie uzasadnienia nie zobaczysz wtedy tabeli punktów, a dedykowany komunikat o analizie footprintów konkurencji.
         """)
 
     with st.expander("Wykrywanie Ad Servera: Campaign Manager 360 vs DV360"):
@@ -472,7 +469,7 @@ with tab2:
         * **Ślad 1 (Identyfikator kliknięcia):** Obecność sygnatury `dclid=` (DoubleClick ID) w parametrach to dowód na bezpośrednie wejście z reklamy CM360.
         * **Ślad 2 (Ścieżki DDM):** Obecność ciągów `/ddm/` (Direct Digital Marketing) oraz skryptów `dcmads.js` w URLach zapytań do infrastruktury DoubleClick.
         * **Ślad 3 (Natywne parametry e-commerce):** Tagi sprzedażowe CM360 używają wbudowanych parametrów `cost=` (przychód) oraz `qty=` (ilość). Czyste DV360 zbiera te dane zazwyczaj przez zmienne niestandardowe (np. `u1=`, `u2=`).
-        * **Znaczenie biznesowe:** Wykrycie CM360 to sygnał, że klient posiada scentralizowane zarządzanie kampaniami, ogromne budżety mediowe i jest potężnym graczem w ekosystemie Google Marketing Platform.
+        * **Znaczenie biznesowe:** Wykrycie CM360 daje klientowi dwukrotnie więcej punktów w kategorii Infrastruktury. To potężny sygnał, że klient posiada scentralizowane zarządzanie kampaniami, ogromne budżety mediowe i jest gotowy na rozwiązania Enterprise.
         """)
 
 with tab3:
