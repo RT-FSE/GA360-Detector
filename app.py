@@ -90,7 +90,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     wykryte_ga4_tids = set()
     wykryte_ads_tids = set()
     server_side_domain = "Nie"
-    gmp_detected = "Nie"
+    gmp_evidence = False
+    cm360_evidence = False
     
     native_excludes = [
         "page_title", "page_location", "page_referrer", "page_path",
@@ -107,8 +108,12 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         if czysta_domena != "Nieznana domena" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
-        if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in original_url.lower() for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
-            gmp_detected = "Tak"
+        url_lower = original_url.lower()
+        if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in url_lower for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
+            gmp_evidence = True
+            
+        if "/ddm/" in url_lower:
+            cm360_evidence = True
             
         base_params = {}
         for q in req.get("query_string", []):
@@ -146,6 +151,11 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     for event in wszystkie_zdarzenia:
         params = event["params"]
         original_url = event["url"]
+        url_lower = original_url.lower()
+        
+        if any(x in url_lower for x in ["doubleclick.net", "/activityi", "/ddm/"]):
+            if "cost" in params or "qty" in params:
+                cm360_evidence = True
         
         if "tid" in params and params["tid"]:
             tid_val = str(params["tid"]).upper()
@@ -210,7 +220,14 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r5 = "[✅]" if len(globalne_ep_params) > 50 else "[❌]"
     r6 = "[✅]" if server_side_domain != "Nie" else "[❌]"
     r7 = "[✅]" if len(wykryte_ga4_tids) > 1 else "[❌]"
-    r8 = "[✅]" if gmp_detected == "Tak" else "[❌]"
+    
+    gmp_status = "Nie"
+    if cm360_evidence:
+        gmp_status = "Tak (CM360)"
+    elif gmp_evidence:
+        gmp_status = "Tak (DV360)"
+        
+    r8 = "[✅]" if gmp_status != "Nie" else "[❌]"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
@@ -278,7 +295,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
 | {r5} | Kontekstowa (Miękka) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
 | {r6} | Kontekstowa (Miękka) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
 | {r7} | Kontekstowa (Miękka) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
-| {r8} | Kontekstowa (Miękka) | Ekosystem Google Marketing Platform | Wykryto tagi Floodlight / DoubleClick: {gmp_detected} |
+| {r8} | Kontekstowa (Miękka) | Ekosystem Google Marketing Platform | Wykryto tagi Floodlight: {gmp_status} |
 """
     json_payload = {
         "verdict": werdykt,
@@ -288,13 +305,11 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         "reason": uzasadnienie_tekst
     }
     
-    # BEZPIECZNE ZWRACANIE WYNIKU
     json_str = json.dumps(json_payload, indent=2)
-    znacznik_start = "\n```json\n"
-    znacznik_koniec = "\n
-```"
     
-    return markdown_output + znacznik_start + json_str + znacznik_koniec
+    # BEZPIECZNE ZWRACANIE WYNIKU (Bez tyld w tekście źródłowym)
+    ticks = "`" * 3
+    return f"{markdown_output}\n{ticks}json\n{json_str}\n{ticks}"
 
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
@@ -342,12 +357,14 @@ with tab1:
                                 })
                             else:
                                 response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
-                                parts = response_text.split("```json")
+                                
+                                # Bezpieczne dzielenie tekstu z jsonem
+                                ticks = "`" * 3
+                                parts = response_text.split(f"{ticks}json")
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split("
-```")[0].strip())
+                                    extracted_json = json.loads(parts[1].split(ticks)[0].strip())
                                     excel_data_rows.append({
                                         "Domena (z pliku)": czysta_domena,
                                         "Werdykt końcowy": extracted_json.get("verdict"),
@@ -422,6 +439,14 @@ with tab2:
         * **Przypadek 1 (Wysoka pewność darmowego GA4):** Sklep zdobył tylko 22/99 punktów, co oznacza, że szansa na posiadanie płatnego GA360 jest znikoma. Wtedy system dokonuje inwersji i stwierdza: Skoro mam ułamek szans na GA360, to moja pewność, że jest to Darmowe GA4 wynosi aż **78%** (`100 - 22`). 
         * **Przypadek 2 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
         * **Przypadek 3 (Brak GA, Wykryto inny system):** Brak logów Google daje 0 punktów w algorytmie. Jeśli jednak skrypt wyłapie np. tagi Adobe Analytics, automatycznie ustawia Pewność na 100% (będąc pewnym, że to klient z Adobe). W kolumnie uzasadnienia nie zobaczysz wtedy tabeli punktów, a dedykowany komunikat o analizie footprintów konkurencji.
+        """)
+
+    with st.expander("Wykrywanie Ad Servera: Campaign Manager 360 vs DV360"):
+        st.markdown("""
+        * **Tło techniczne:** Zarówno DV360, jak i CM360 współdzielą te same tagi konwersji (Floodlight). Jednak system potrafi rozpoznać droższy Ad Server (CM360) po dwóch charakterystycznych śladach sieciowych.
+        * **Ślad 1 (Ścieżki DDM):** Obecność ciągów `/ddm/` (Direct Digital Marketing) w URLach zapytań do infrastruktury DoubleClick.
+        * **Ślad 2 (Natywne parametry e-commerce):** Tagi sprzedażowe CM360 używają wbudowanych parametrów `cost=` (przychód) oraz `qty=` (ilość). Czyste DV360 zbiera te dane zazwyczaj przez zmienne niestandardowe (np. `u1=`, `u2=`).
+        * **Znaczenie biznesowe:** Wykrycie CM360 to sygnał, że klient posiada scentralizowane zarządzanie kampaniami, ogromne budżety mediowe i jest potężnym graczem w ekosystemie Google Marketing Platform.
         """)
 
 with tab3:
