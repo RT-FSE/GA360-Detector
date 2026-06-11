@@ -9,13 +9,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
-st.sidebar.caption("Wersja: 18")
+st.sidebar.caption("Wersja: 19")
 
 st.sidebar.info("""
-**🔄 Co nowego w wersji 18?**
+**🔄 Co nowego w wersji 19?**
+* **Granularna analiza CM360:** System osobno ocenia i wyświetla (Tak/Nie) obecność poszczególnych sygnatur Ad Servera (`/ddm/`, `cost`, `qty`, `dclid`), tworząc precyzyjny raport z wdrożenia.
 * **Nowa nomenklatura reguł:** Uporządkowano nazewnictwo w tabeli wyników według przejrzystego schematu (Typ Główny + Doprecyzowanie).
-* **Usunięcie SA360:** Optymalizacja reguł (usunięto rzadko występujące parametry wyszukiwarkowe).
-* **Nowe sygnatury CM360:** Dodano wykrywanie identyfikatorów `dclid=` oraz szerszych ścieżek Ad Servera (DCM).
 * **Przejrzysty podział GMP:** Rozbicie tabeli na bloki Campaign Manager 360 vs Display & Video 360.
 """)
 
@@ -102,7 +101,12 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     
     # Detekcja GMP (CM360 vs DV360)
     gmp_evidence = False
-    cm360_evidence = False
+    
+    # Granularna detekcja CM360
+    cm360_ddm = False
+    cm360_cost = False
+    cm360_qty = False
+    cm360_dclid = False
     
     native_excludes = [
         "page_title", "page_location", "page_referrer", "page_path",
@@ -125,8 +129,11 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
             gmp_evidence = True
             
         # Wykrywanie twardych sygnatur CM360 (ścieżki ddm, skrypty dcm, identyfikator dclid)
-        if any(x in url_lower for x in ["/ddm/", "dcmads.js", "dclid="]):
-            cm360_evidence = True
+        if any(x in url_lower for x in ["/ddm/", "dcmads.js"]):
+            cm360_ddm = True
+            
+        if "dclid=" in url_lower:
+            cm360_dclid = True
             
         base_params = {}
         for q in req.get("query_string", []):
@@ -134,7 +141,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
             value = q.get("value", "")
             if name: base_params[name] = value
             if name and name.lower() == "dclid":
-                cm360_evidence = True
+                cm360_dclid = True
 
         post_text = req.get("post_data", "")
         if post_text:
@@ -170,8 +177,10 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         
         # Weryfikacja parametrów e-commerce w Floodlightach (cost, qty)
         if any(x in url_lower for x in ["doubleclick.net", "/activityi", "/ddm/"]):
-            if "cost" in params or "qty" in params:
-                cm360_evidence = True
+            if "cost" in params:
+                cm360_cost = True
+            if "qty" in params:
+                cm360_qty = True
         
         if "tid" in params and params["tid"]:
             tid_val = str(params["tid"]).upper()
@@ -237,8 +246,17 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r6 = "[✅]" if server_side_domain != "Nie" else "[❌]"
     r7 = "[✅]" if len(wykryte_ga4_tids) > 1 else "[❌]"
     
+    # Agregacja dla CM360
+    cm360_evidence = cm360_ddm or cm360_cost or cm360_qty or cm360_dclid
     r8 = "[✅]" if cm360_evidence else "[❌]"
     r9 = "[✅]" if gmp_evidence else "[❌]"
+    
+    # Przygotowanie stringa ze szczegółami dla CM360
+    cm360_ddm_str = "Tak" if cm360_ddm else "Nie"
+    cm360_cost_str = "Tak" if cm360_cost else "Nie"
+    cm360_qty_str = "Tak" if cm360_qty else "Nie"
+    cm360_dclid_str = "Tak" if cm360_dclid else "Nie"
+    cm360_szczegoly = f"/ddm/: {cm360_ddm_str} | cost: {cm360_cost_str} | qty: {cm360_qty_str} | dclid: {cm360_dclid_str}"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
@@ -305,7 +323,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
 | {r5} | Kontekstowa (Gęstość danych) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
 | {r6} | Kontekstowa (Architektura IT) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
 | {r7} | Kontekstowa (Zarządzanie) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
-| {r8} | Kontekstowa (Ad Server) | Ad Server: Campaign Manager 360 | Sygnatury (/ddm/, cost, qty, dclid): {"Tak" if cm360_evidence else "Nie"} |
+| {r8} | Kontekstowa (Ad Server) | Ad Server: Campaign Manager 360 | {cm360_szczegoly} |
 | {r9} | Kontekstowa (DSP) | DSP: Display & Video 360 | Bazowe tagi Floodlight: {"Tak" if gmp_evidence else "Nie"} |
 """
     json_payload = {
