@@ -9,8 +9,14 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
-st.sidebar.caption("Wersja: 14")
-st.sidebar.info("Moduł automatyczny został wyłączony w celu zapewnienia maksymalnej dokładności danych. Wgraj jeden lub wiele plików .har jednocześnie.")
+st.sidebar.caption("Wersja: 17")
+
+st.sidebar.info("""
+**🔄 Co nowego w wersji 17?**
+* **Usunięcie SA360:** Optymalizacja reguł (usunięto rzadko występujące parametry wyszukiwarkowe).
+* **Nowe sygnatury CM360:** Dodano wykrywanie identyfikatorów `dclid=` oraz szerszych ścieżek Ad Servera (DCM).
+* **Przejrzysty podział GMP:** Rozbicie tabeli na dwa główne bloki: Campaign Manager 360 vs Display & Video 360.
+""")
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
@@ -34,16 +40,18 @@ def filtruj_logi_har(har_json):
             if any(fp in url_lower for fp in footprints):
                 wykryte_inne.add(system)
         
-        if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".svg", ".gif"]):
-            continue
+        # Wyjątek: nie blokujemy skryptów dcmads.js, które mogą być dowodem na CM360
+        if not "dcmads.js" in url_lower:
+            if any(url_lower.endswith(ext) or f"{ext}?" in url_lower for ext in [".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".svg", ".gif"]):
+                continue
         
         is_analytics = False
-        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track", "tag", "data", "pagead", "activityi", "fls."]):
+        if any(x in url_lower for x in ["collect", "google-analytics", "doubleclick", "analytics", "/gtm", "metrics", "stat", "track", "tag", "data", "pagead", "activityi", "fls.", "dcmads"]):
             is_analytics = True
             
         query_string = entry.get("request", {}).get("queryString", [])
         for q in query_string:
-            if q.get("name") in ["tid", "v", "en"]:
+            if q.get("name") in ["tid", "v", "en", "dclid"]:
                 is_analytics = True
                 break
 
@@ -90,6 +98,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     wykryte_ga4_tids = set()
     wykryte_ads_tids = set()
     server_side_domain = "Nie"
+    
+    # Detekcja GMP (CM360 vs DV360)
     gmp_evidence = False
     cm360_evidence = False
     
@@ -104,15 +114,17 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         original_url = req.get("url", "")
         parsed_url = urlparse(original_url)
         hostname = parsed_url.hostname or ""
+        url_lower = original_url.lower()
         
         if czysta_domena != "Nieznana domena" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
-        url_lower = original_url.lower()
+        # Wykrywanie ogólnej infrastruktury DV360/GMP
         if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in url_lower for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
             gmp_evidence = True
             
-        if "/ddm/" in url_lower:
+        # Wykrywanie twardych sygnatur CM360 (ścieżki ddm, skrypty dcm, identyfikator dclid)
+        if any(x in url_lower for x in ["/ddm/", "dcmads.js", "dclid="]):
             cm360_evidence = True
             
         base_params = {}
@@ -120,6 +132,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
             name = q.get("name")
             value = q.get("value", "")
             if name: base_params[name] = value
+            if name and name.lower() == "dclid":
+                cm360_evidence = True
 
         post_text = req.get("post_data", "")
         if post_text:
@@ -153,6 +167,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         original_url = event["url"]
         url_lower = original_url.lower()
         
+        # Weryfikacja parametrów e-commerce w Floodlightach (cost, qty)
         if any(x in url_lower for x in ["doubleclick.net", "/activityi", "/ddm/"]):
             if "cost" in params or "qty" in params:
                 cm360_evidence = True
@@ -221,22 +236,17 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r6 = "[✅]" if server_side_domain != "Nie" else "[❌]"
     r7 = "[✅]" if len(wykryte_ga4_tids) > 1 else "[❌]"
     
-    gmp_status = "Nie"
-    if cm360_evidence:
-        gmp_status = "Tak (CM360)"
-    elif gmp_evidence:
-        gmp_status = "Tak (DV360)"
-        
-    r8 = "[✅]" if gmp_status != "Nie" else "[❌]"
+    r8 = "[✅]" if cm360_evidence else "[❌]"
+    r9 = "[✅]" if gmp_evidence else "[❌]"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
 
-    # --- MATEMATYKA (DYNAMIC SCORING) - NAPRAWIONY BŁĄD ZAOKRĄGLEŃ UŁAMKÓW ---
+    # --- MATEMATYKA (DYNAMIC SCORING) ---
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
-    if r8 == "[✅]": infra_score += 10
     if r7 == "[✅]": infra_score += 10
+    if gmp_evidence: infra_score += 10  # Max 10 pkt za ekosystem GMP (niezależnie czy CM czy DV)
     
     data_score_ep = int(min((max_ep_per_event / 25) * 40, 40))
     data_score_gl = int(min((len(globalne_ep_params) / 50) * 29, 29))
@@ -256,7 +266,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     else:
         uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/30 pkt, Dane_Event: {data_score_ep}/40 pkt, Dane_Sesja: {data_score_gl}/29 pkt)"
         
-        # INWERSJA PEWNOŚCI DLA DARMOWEGO GA4
         if twarda_regula_zlamana:
             werdykt = "GA 360"
             pewnosc = "100%"
@@ -295,7 +304,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
 | {r5} | Kontekstowa (Miękka) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
 | {r6} | Kontekstowa (Miękka) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
 | {r7} | Kontekstowa (Miękka) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
-| {r8} | Kontekstowa (Miękka) | Ekosystem Google Marketing Platform | Wykryto tagi Floodlight: {gmp_status} |
+| {r8} | Kontekstowa (GMP) | Ad Server: Campaign Manager 360 | Sygnatury (/ddm/, cost, qty, dclid): {"Tak" if cm360_evidence else "Nie"} |
+| {r9} | Kontekstowa (GMP) | DSP: Display & Video 360 | Bazowe tagi Floodlight: {"Tak" if gmp_evidence else "Nie"} |
 """
     json_payload = {
         "verdict": werdykt,
@@ -306,8 +316,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     }
     
     json_str = json.dumps(json_payload, indent=2)
-    
-    # BEZPIECZNE ZWRACANIE WYNIKU (Bez tyld w tekście źródłowym)
     ticks = "`" * 3
     return f"{markdown_output}\n{ticks}json\n{json_str}\n{ticks}"
 
@@ -358,7 +366,6 @@ with tab1:
                             else:
                                 response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
                                 
-                                # Bezpieczne dzielenie tekstu z jsonem
                                 ticks = "`" * 3
                                 parts = response_text.split(f"{ticks}json")
                                 st.markdown(parts[0])
@@ -378,7 +385,6 @@ with tab1:
         else:
             st.warning("Najpierw wgraj przynajmniej jeden plik .har.")
 
-    # --- TABELA ZBIORCZA ---
     if excel_data_rows:
         st.write("")
         st.subheader("📊 Zbiorcze Zestawienie Wyników (Bulk Export)")
@@ -443,9 +449,10 @@ with tab2:
 
     with st.expander("Wykrywanie Ad Servera: Campaign Manager 360 vs DV360"):
         st.markdown("""
-        * **Tło techniczne:** Zarówno DV360, jak i CM360 współdzielą te same tagi konwersji (Floodlight). Jednak system potrafi rozpoznać droższy Ad Server (CM360) po dwóch charakterystycznych śladach sieciowych.
-        * **Ślad 1 (Ścieżki DDM):** Obecność ciągów `/ddm/` (Direct Digital Marketing) w URLach zapytań do infrastruktury DoubleClick.
-        * **Ślad 2 (Natywne parametry e-commerce):** Tagi sprzedażowe CM360 używają wbudowanych parametrów `cost=` (przychód) oraz `qty=` (ilość). Czyste DV360 zbiera te dane zazwyczaj przez zmienne niestandardowe (np. `u1=`, `u2=`).
+        * **Tło techniczne:** Zarówno DV360, jak i CM360 współdzielą te same tagi konwersji (Floodlight). Jednak system potrafi rozpoznać droższy Ad Server (CM360) po charakterystycznych śladach sieciowych.
+        * **Ślad 1 (Identyfikator kliknięcia):** Obecność sygnatury `dclid=` (DoubleClick ID) w parametrach to dowód na bezpośrednie wejście z reklamy CM360.
+        * **Ślad 2 (Ścieżki DDM):** Obecność ciągów `/ddm/` (Direct Digital Marketing) oraz skryptów `dcmads.js` w URLach zapytań do infrastruktury DoubleClick.
+        * **Ślad 3 (Natywne parametry e-commerce):** Tagi sprzedażowe CM360 używają wbudowanych parametrów `cost=` (przychód) oraz `qty=` (ilość). Czyste DV360 zbiera te dane zazwyczaj przez zmienne niestandardowe (np. `u1=`, `u2=`).
         * **Znaczenie biznesowe:** Wykrycie CM360 to sygnał, że klient posiada scentralizowane zarządzanie kampaniami, ogromne budżety mediowe i jest potężnym graczem w ekosystemie Google Marketing Platform.
         """)
 
