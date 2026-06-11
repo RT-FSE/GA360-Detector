@@ -7,16 +7,182 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 
 st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", layout="wide")
 
-# --- PANEL BOCZNY (SIDEBAR) ---
-st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
-st.sidebar.caption("Wersja: 21")
+# ==========================================
+# SŁOWNIK WIELOJĘZYCZNOŚCI (I18N DICTIONARY)
+# ==========================================
+LANGUAGES = {
+    "PL": {
+        "sidebar_mode": "**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**",
+        "sidebar_version": "Wersja: 22",
+        "sidebar_changelog": """
+**🔄 Co nowego w wersji 22?**
+* **Pełna dwujęzyczność (PL/EN):** Cały interfejs, baza wiedzy i instrukcja HAR przełączają się w locie bez używania zewnętrznego AI.
+* **Granularna analiza CM360:** System osobno ocenia obecność sygnatur Ad Servera (`/ddm/`, `cost`, `qty`, `dclid`).
+* **Rebalans pod CM360:** Wykrycie Campaign Managera 360 daje teraz aż 20 punktów (dwukrotnie więcej niż samo DV360).
+""",
+        "title": "GA360 Detector",
+        "tabs": ["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"],
+        "upload_desc": "Wyeksportuj pliki `.har` ze swojej przeglądarki i wgraj je poniżej. **Możesz przeciągnąć wiele plików naraz.**",
+        "upload_label": "Wybierz pliki .har",
+        "btn_analyze": "🔍 Analizuj wgrane pliki",
+        "spinner_msg": "Analiza pliku: {}...",
+        "expander_title": "{} - Analiza wyniku (Plik: {})",
+        "err_no_scripts": "W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.",
+        "err_read_file": "Błąd odczytu pliku {}: {}",
+        "warn_no_files": "Najpierw wgraj przynajmniej jeden plik .har.",
+        "table_summary_title": "📊 Zbiorcze Zestawienie Wyników (Bulk Export)",
+        "btn_download_csv": "📥 Pobierz zbiorczy raport CSV",
+        "csv_filename": "Zbiorczy_Raport_GA360_Detector.csv",
+        "csv_err_msg": "Brak zdarzeń sieciowych.",
+        "csv_col_domain": "Domena (z pliku)",
+        "csv_col_verdict": "Werdykt końcowy",
+        "csv_col_confidence": "Pewność werdyktu",
+        "csv_col_tid": "Identyfikator usługi (TID)",
+        "csv_col_other": "Inny system analityczny",
+        "csv_col_reason": "Kluczowe uzasadnienie",
+        "md_domain": "DOMENA / SERWIS",
+        "md_verdict": "WERDYKT",
+        "md_confidence": "PEWNOŚĆ WERDYKTU",
+        "md_other": "INNY SYSTEM ANALITYCZNY",
+        "md_tids": "Wykryte Measurement ID (tid)",
+        "table_header_status": "Stan",
+        "table_header_type": "Typ reguły",
+        "table_header_rule": "Reguła walidacyjna / Limit",
+        "table_header_result": "Wynik analizy sieciowej",
+        "rule_t1_type": "Twarda (Limit zdarzenia)",
+        "rule_t1_desc": "Liczba parametrów > 25 w evencie",
+        "rule_t1_res": "Wykryto maks: {}",
+        "rule_t2_type": "Twarda (Limit rozmiaru)",
+        "rule_t2_desc": "Długość wartości parametru custom > 100 znaków",
+        "rule_t2_res": "Najdłuższy niestandardowy: {} znaków",
+        "rule_t3_type": "Twarda (Limit użytkownika)",
+        "rule_t3_desc": "Właściwości użytkownika (User Properties) > 25",
+        "rule_t3_res": "Wykryto maks: {}",
+        "rule_t4_type": "Twarda (Limit produktu)",
+        "rule_t4_desc": "Niestandardowe parametry produktu (item-scoped) > 10",
+        "rule_t4_res": "Wykryto maks: {} w jednym produkcie",
+        "rule_m5_type": "Kontekstowa (Gęstość danych)",
+        "rule_m5_desc": "Suma unikalnych parametrów ep.* w sesji > 50",
+        "rule_m5_res": "Wykryto łącznie: {} unikalnych",
+        "rule_m6_type": "Kontekstowa (Architektura IT)",
+        "rule_m6_desc": "Server-Side Tagging (Endpoint w 1st-party domain)",
+        "rule_m6_res": "Wykryto punkt zbiórki: {}",
+        "rule_m7_type": "Kontekstowa (Zarządzanie)",
+        "rule_m7_desc": "Korporacyjny Multi-tagging",
+        "rule_m7_res_yes": "Tak ({})",
+        "rule_m7_res_no": "Nie",
+        "rule_m8_type": "Kontekstowa (Ad Server)",
+        "rule_m8_desc": "Ad Server: Campaign Manager 360",
+        "rule_m9_type": "Kontekstowa (DSP)",
+        "rule_m9_desc": "DSP: Display & Video 360",
+        "rule_m9_res_yes": "Tak",
+        "rule_m9_res_no": "Nie",
+        "verdict_no_ga": "Brak Google Analytics",
+        "verdict_ga360": "GA 360",
+        "verdict_prob_ga360": "Prawdopodobnie GA 360",
+        "verdict_free_infra": "Darmowe GA4 (Zaawansowana infrastruktura)",
+        "verdict_free_empty": "Darmowe GA4 (Puste parametry)",
+        "verdict_free": "Darmowe GA4",
+        "reason_no_ga": "Brak ruchu Google. Klasyfikacja oparta na sygnaturach rynkowych alternatyw.",
+        "reason_pts": "Punkty analizy: {}/99 pkt (Infra: {}/40 pkt, Dane_Event: {}/30 pkt, Dane_Sesja: {}/29 pkt)",
+        "edu_title": "📚 Baza Wiedzy Analitycznej & Biznesowej",
+        "edu_subtitle": "Dokumentacja logiczna reguł wbudowana bezpośrednio w silnik weryfikacyjny detektywa.",
+        "edu_hard_header": "🔴 Twarde Reguły i Limity (100% Pewności)",
+        "edu_soft_header": "🟡 Dynamiczny Scoring Kontekstowy (Analiza Gęstości Danych)",
+        "har_title": "📥 Instrukcja Generowania Wartościowych Plików .HAR",
+        "har_subtitle": "Aby algorytm matematyczny poprawnie przeanalizował strukturę danych i wykrył systemy analityczne, plik logów sieciowych musi zostać wygenerowany zgodnie z poniższą procedurą."
+    },
+    "EN": {
+        "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
+        "sidebar_version": "Version: 22",
+        "sidebar_changelog": """
+**🔄 What's new in version 22?**
+* **Full Bilingual Support (PL/EN):** The entire UI, knowledge base, and HAR guide switch instantly without external AI.
+* **Granular CM360 Analysis:** System evaluates and displays separate flags for Ad Server signals (`/ddm/`, `cost`, `qty`, `dclid`).
+* **Scoring Rebalance for CM360:** Campaign Manager 360 detection now awards 20 points (double the weight of standalone DV360).
+""",
+        "title": "GA360 Detector",
+        "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
+        "upload_desc": "Export `.har` files from your browser and upload them below. **You can drag and drop multiple files at once.**",
+        "upload_label": "Choose .har files",
+        "btn_analyze": "🔍 Analyze Uploaded Files",
+        "spinner_msg": "Analyzing file: {}...",
+        "expander_title": "{} - Analysis Result (File: {})",
+        "err_no_scripts": "No analytics scripts or footprints were found in this HAR file. Ensure the file was recorded correctly.",
+        "err_read_file": "Error reading file {}: {}",
+        "warn_no_files": "Please upload at least one .har file first.",
+        "table_summary_title": "📊 Bulk Export Summary Table",
+        "btn_download_csv": "📥 Download Bulk CSV Report",
+        "csv_filename": "Bulk_Report_GA360_Detector.csv",
+        "csv_err_msg": "No network events.",
+        "csv_col_domain": "Domain (from file)",
+        "csv_col_verdict": "Final Verdict",
+        "csv_col_confidence": "Verdict Confidence",
+        "csv_col_tid": "Property ID (TID)",
+        "csv_col_other": "Other Analytics System",
+        "csv_col_reason": "Key Rationale",
+        "md_domain": "DOMAIN / WEBSITE",
+        "md_verdict": "VERDICT",
+        "md_confidence": "VERDICT CONFIDENCE",
+        "md_other": "OTHER ANALYTICS SYSTEM",
+        "md_tids": "Detected Measurement IDs (tid)",
+        "table_header_status": "Status",
+        "table_header_type": "Rule Type",
+        "table_header_rule": "Validation Rule / Limit",
+        "table_header_result": "Network Analysis Result",
+        "rule_t1_type": "Hard (Event Limit)",
+        "rule_t1_desc": "Number of custom parameters > 25 in a single event",
+        "rule_t1_res": "Max detected: {}",
+        "rule_t2_type": "Hard (Size Limit)",
+        "rule_t2_desc": "Custom dimension string value length > 100 characters",
+        "rule_t2_res": "Longest custom value: {} chars",
+        "rule_t3_type": "Hard (User Limit)",
+        "rule_t3_desc": "Registered User Properties in a hit > 25",
+        "rule_t3_res": "Max detected: {}",
+        "rule_t4_type": "Hard (Product Limit)",
+        "rule_t4_desc": "Custom item-scoped dimensions per product > 10",
+        "rule_t4_res": "Max detected: {} in a single product",
+        "rule_m5_type": "Contextual (Data Density)",
+        "rule_m5_desc": "Total unique ep.* parameters in session > 50",
+        "rule_m5_res": "Total detected: {} unique",
+        "rule_m6_type": "Contextual (IT Architecture)",
+        "rule_m6_desc": "Server-Side Tagging (Endpoint in a 1st-party domain)",
+        "rule_m6_res": "Collection endpoint detected: {}",
+        "rule_m7_type": "Contextual (Governance)",
+        "rule_m7_desc": "Corporate Multi-tagging setup",
+        "rule_m7_res_yes": "Yes ({})",
+        "rule_m7_res_no": "No",
+        "rule_m8_type": "Contextual (Ad Server)",
+        "rule_m8_desc": "Ad Server: Campaign Manager 360",
+        "rule_m9_type": "Contextual (DSP)",
+        "rule_m9_desc": "DSP: Display & Video 360",
+        "rule_m9_res_yes": "Yes",
+        "rule_m9_res_no": "No",
+        "verdict_no_ga": "No Google Analytics",
+        "verdict_ga360": "GA 360",
+        "verdict_prob_ga360": "Probably GA 360",
+        "verdict_free_infra": "Free GA4 (Advanced Infrastructure)",
+        "verdict_free_empty": "Free GA4 (Empty Parameters)",
+        "verdict_free": "Free GA4",
+        "reason_no_ga": "No Google traffic detected. Classification based on competitor market footprints.",
+        "reason_pts": "Analysis Score: {}/99 pts (Infra: {}/40 pts, Data_Event: {}/30 pts, Data_Session: {}/29 pts)",
+        "edu_title": "📚 Analytics & Business Knowledge Base",
+        "edu_subtitle": "Logical documentation of the rules embedded directly within the detective's verification engine.",
+        "edu_hard_header": "🔴 Hard Rules and Prohibitive Limits (100% Confidence)",
+        "edu_soft_header": "🟡 Dynamic Contextual Scoring (Data Density Analysis)",
+        "har_title": "📥 Guide to Generating Actionable .HAR Files",
+        "har_subtitle": "In order for the mathematical algorithm to properly analyze the data structure and detect enterprise systems, the network logs must be generated according to the following procedure."
+    }
+}
 
-st.sidebar.info("""
-**🔄 Co nowego w wersji 21?**
-* **Fix wyświetlania CM360:** Naprawiono błąd renderowania tabeli Markdown – teraz wszystkie cztery sygnatury Ad Servera są w pełni widoczne.
-* **Rebalans Scoringu:** Zwiększono wagę kategorii Infrastruktura (do 40 pkt). Wykrycie Campaign Managera 360 daje teraz aż 20 punktów, dwukrotnie więcej niż zwykłe DV360.
-* **Nowa nomenklatura reguł:** Uporządkowano nazewnictwo w tabeli wyników według przejrzystego schematu (Typ Główny + Doprecyzowanie).
-""")
+# --- SELEKCJA JĘZYKA W SIDEBARZE ---
+selected_lang = st.sidebar.selectbox("🌐 Język / Language", ["PL", "EN"])
+t = LANGUAGES[selected_lang]
+
+st.sidebar.write("")
+st.sidebar.markdown(t["sidebar_mode"])
+st.sidebar.caption(t["sidebar_version"])
+st.sidebar.info(t["sidebar_changelog"])
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
@@ -99,7 +265,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     server_side_domain = "Nie"
     
     gmp_evidence = False
-    
     cm360_ddm = False
     cm360_cost = False
     cm360_qty = False
@@ -244,26 +409,29 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r8 = "[✅]" if cm360_evidence else "[❌]"
     r9 = "[✅]" if gmp_evidence else "[❌]"
     
-    cm360_ddm_str = "Tak" if cm360_ddm else "Nie"
-    cm360_cost_str = "Tak" if cm360_cost else "Nie"
-    cm360_qty_str = "Tak" if cm360_qty else "Nie"
-    cm360_dclid_str = "Tak" if cm360_dclid else "Nie"
+    # Mapowanie stringów Tak/Nie dla wersji językowej
+    txt_yes = "Yes" if selected_lang == "EN" else "Tak"
+    txt_no = "No" if selected_lang == "EN" else "Nie"
     
-    # Używamy przecinków zamiast pionowej kreski, aby nie popsuć tabeli w Markdownie
+    cm360_ddm_str = txt_yes if cm360_ddm else txt_no
+    cm360_cost_str = txt_yes if cm360_cost else txt_no
+    cm360_qty_str = txt_yes if cm360_qty else txt_no
+    cm360_dclid_str = txt_yes if cm360_dclid else txt_no
+    
     cm360_szczegoly = f"**/ddm/:** {cm360_ddm_str}, **cost:** {cm360_cost_str}, **qty:** {cm360_qty_str}, **dclid:** {cm360_dclid_str}"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
 
-    # --- MATEMATYKA (DYNAMIC SCORING) ---
+    # --- MATEMATYKA (DYNAMIC SCORING) - REBALANS V20 ---
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
     if r7 == "[✅]": infra_score += 10
     
     if cm360_evidence:
-        infra_score += 20  # Wdrożenie premium CM360 (max punktów)
+        infra_score += 20
     elif gmp_evidence:
-        infra_score += 10  # Podstawowe wdrożenie DV360
+        infra_score += 10
     
     data_score_ep = int(min((max_ep_per_event / 25) * 30, 30))
     data_score_gl = int(min((len(globalne_ep_params) / 50) * 29, 29))
@@ -271,8 +439,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     total_score = infra_score + data_score_ep + data_score_gl
 
     if len(wykryte_ga4_tids) == 0:
-        werdykt = "Brak Google Analytics"
-        uzasadnienie_tekst = "Brak ruchu Google. Klasyfikacja oparta na sygnaturach rynkowych alternatyw."
+        werdykt = t["verdict_no_ga"]
+        uzasadnienie_tekst = t["reason_no_ga"]
         if wykryte_inne:
             if "Adobe Analytics (Enterprise)" in wykryte_inne:
                 pewnosc = "100%"
@@ -281,48 +449,48 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         else:
             pewnosc = "90%"
     else:
-        uzasadnienie_tekst = f"Punkty analizy: {total_score}/99 pkt (Infra: {infra_score}/40 pkt, Dane_Event: {data_score_ep}/30 pkt, Dane_Sesja: {data_score_gl}/29 pkt)"
+        uzasadnienie_tekst = t["reason_pts"].format(total_score, infra_score, data_score_ep, data_score_gl)
         
         if twarda_regula_zlamana:
-            werdykt = "GA 360"
+            werdykt = t["verdict_ga360"]
             pewnosc = "100%"
         elif total_score >= 60:
-            werdykt = "Prawdopodobnie GA 360"
+            werdykt = t["verdict_prob_ga360"]
             pewnosc = f"{total_score}%"
         elif infra_score >= 20 and total_score < 60:
-            werdykt = "Darmowe GA4 (Zaawansowana infrastruktura)"
+            werdykt = t["verdict_free_infra"]
             pewnosc = f"{100 - total_score}%"
         elif puste_zdarzenia_ga4:
-            werdykt = "Darmowe GA4 (Puste parametry)"
+            werdykt = t["verdict_free_empty"]
             pewnosc = "95%"
         else:
-            werdykt = "Darmowe GA4"
+            werdykt = t["verdict_free"]
             pewnosc = f"{100 - total_score}%"
 
-    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else "Brak Google Analytics"
-    inny_system_display = f"Tak, {', '.join(wykryte_inne)}" if wykryte_inne else "Nie"
+    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else t["verdict_no_ga"]
+    inny_system_display = f"{txt_yes}, {', '.join(wykryte_inne)}" if wykryte_inne else txt_no
 
     markdown_output = f"""
-* **DOMENA / SERWIS:** `{czysta_domena}`
-* **WERDYKT:** **{werdykt}**
-* **PEWNOŚĆ WERDYKTU:** `{pewnosc}`
-* **INNY SYSTEM ANALITYCZNY:** `{inny_system_display}`
-* **Wykryte Measurement ID (tid):** `{tid_ga4_display}`
+* **{t['md_domain']}:** `{czysta_domena}`
+* **{t['md_verdict']}:** **{werdykt}**
+* **{t['md_confidence']}:** `{pewnosc}`
+* **{t['md_other']}:** `{inny_system_display}`
+* **{t['md_tids']}:** `{tid_ga4_display}`
 
 ---
-### 📋 Kontrola Reguł Analitycznych (Dla ekosystemu Google)
+### 📋 {t['edu_subtitle'] if selected_lang=='PL' else 'Rule Validation Summary'}
 
-| Stan | Typ reguły | Reguła walidacyjna / Limit | Wynik analizy sieciowej |
+| {t['table_header_status']} | {t['table_header_type']} | {t['table_header_rule']} | {t['table_header_result']} |
 | :---: | :--- | :--- | :--- |
-| {r1} | Twarda (Limit zdarzenia) | Liczba parametrów > 25 w evencie | Wykryto maks: {max_ep_per_event} |
-| {r2} | Twarda (Limit rozmiaru) | Długość wartości parametru custom > 100 znaków | Najdłuższy niestandardowy: {max_custom_param_len} znaków |
-| {r3} | Twarda (Limit użytkownika) | Właściwości użytkownika (User Properties) > 25 | Wykryto maks: {max_up_per_event} |
-| {r4} | Twarda (Limit produktu) | Niestandardowe parametry produktu (item-scoped) > 10 | Wykryto maks: {max_item_params} w jednym produkcie |
-| {r5} | Kontekstowa (Gęstość danych) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
-| {r6} | Kontekstowa (Architektura IT) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
-| {r7} | Kontekstowa (Zarządzanie) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
-| {r8} | Kontekstowa (Ad Server) | Ad Server: Campaign Manager 360 | {cm360_szczegoly} |
-| {r9} | Kontekstowa (DSP) | DSP: Display & Video 360 | Bazowe tagi Floodlight: {"Tak" if gmp_evidence else "Nie"} |
+| {r1} | {t['rule_t1_type']} | {t['rule_t1_desc']} | {t['rule_t1_res'].format(max_ep_per_event)} |
+| {r2} | {t['rule_t2_type']} | {t['rule_t2_desc']} | {t['rule_t2_res'].format(max_custom_param_len)} |
+| {r3} | {t['rule_t3_type']} | {t['rule_t3_desc']} | {t['rule_t3_res'].format(max_up_per_event)} |
+| {r4} | {t['rule_t4_type']} | {t['rule_t4_desc']} | {t['rule_t4_res'].format(max_item_params)} |
+| {r5} | {t['rule_m5_type']} | {t['rule_m5_desc']} | {t['rule_m5_res'].format(len(globalne_ep_params))} |
+| {r6} | {t['rule_m6_type']} | {t['rule_m6_desc']} | {t['rule_m6_res'].format(server_side_domain)} |
+| {r7} | {t['rule_m7_type']} | {t['rule_m7_desc']} | {t['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t['rule_m7_res_no']} |
+| {r8} | {t['rule_m8_type']} | {t['rule_m8_desc']} | {cm360_szczegoly} |
+| {r9} | {t['rule_m9_type']} | {t['rule_m9_desc']} | {t['rule_m9_res_yes'] if gmp_evidence else t['rule_m9_res_no']} |
 """
     json_payload = {
         "verdict": werdykt,
@@ -339,21 +507,20 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
 # ==========================================
 # INTERFEJS UŻYTKOWNIKA
 # ==========================================
-st.title("🕵️‍♂️ GA360 Detector")
+st.title(f"🕵️‍♂️ {t['title']}")
 
-tab1, tab2, tab3 = st.tabs(["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"])
+tab1, tab2, tab3 = st.tabs(t["tabs"])
 
 with tab1:
     excel_data_rows = []
 
-    st.markdown("Wyeksportuj pliki `.har` ze swojej przeglądarki i wgraj je poniżej. **Możesz przeciągnąć wiele plików naraz.**")
+    st.markdown(t["upload_desc"])
+    wgrane_pliki = st.file_uploader(t["upload_label"], type=["har"], accept_multiple_files=True)
     
-    wgrane_pliki = st.file_uploader("Wybierz pliki .har", type=["har"], accept_multiple_files=True)
-    
-    if st.button("🔍 Analizuj wgrane pliki"):
+    if st.button(t["btn_analyze"]):
         if wgrane_pliki:
             for plik in wgrane_pliki:
-                with st.spinner(f"Analiza pliku: {plik.name}..."):
+                with st.spinner(t["spinner_msg"].format(plik.name)):
                     try:
                         har_data = json.load(plik)
                         
@@ -369,16 +536,16 @@ with tab1:
 
                         filtered_requests, wykryte_inne = filtruj_logi_har(har_data)
                         
-                        with st.expander(f"{czysta_domena} - Analiza wyniku (Plik: {plik.name})", expanded=False):
+                        with st.expander(t["expander_title"].format(czysta_domena, plik.name), expanded=False):
                             if not filtered_requests and not wykryte_inne:
-                                st.warning("W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.")
+                                st.warning(t["err_no_scripts"])
                                 excel_data_rows.append({
-                                    "Domena (z pliku)": czysta_domena,
-                                    "Werdykt końcowy": "Błąd / Brak danych",
-                                    "Pewność werdyktu": "0%",
-                                    "Identyfikator usługi (TID)": "Brak",
-                                    "Inny system analityczny": "Nie",
-                                    "Kluczowe uzasadnienie": "Brak zdarzeń sieciowych."
+                                    t["csv_col_domain"]: czysta_domena,
+                                    t["csv_col_verdict"]: "Error" if selected_lang=="EN" else "Błąd / Brak danych",
+                                    t["csv_col_confidence"]: "0%",
+                                    t["csv_col_tid"]: "None" if selected_lang=="EN" else "Brak",
+                                    t["csv_col_other"]: "No" if selected_lang=="EN" else "Nie",
+                                    t["csv_col_reason"]: t["csv_err_msg"]
                                 })
                             else:
                                 response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
@@ -390,119 +557,135 @@ with tab1:
                                 if len(parts) > 1:
                                     extracted_json = json.loads(parts[1].split(ticks)[0].strip())
                                     excel_data_rows.append({
-                                        "Domena (z pliku)": czysta_domena,
-                                        "Werdykt końcowy": extracted_json.get("verdict"),
-                                        "Pewność werdyktu": extracted_json.get("confidence"),
-                                        "Identyfikator usługi (TID)": extracted_json.get("tid"),
-                                        "Inny system analityczny": extracted_json.get("other_systems_text"),
-                                        "Kluczowe uzasadnienie": extracted_json.get("reason")
+                                        t["csv_col_domain"]: czysta_domena,
+                                        t["csv_col_verdict"]: extracted_json.get("verdict"),
+                                        t["csv_col_confidence"]: extracted_json.get("confidence"),
+                                        t["csv_col_tid"]: extracted_json.get("tid"),
+                                        t["csv_col_other"]: extracted_json.get("other_systems_text"),
+                                        t["csv_col_reason"]: extracted_json.get("reason")
                                     })
                     except Exception as e:
-                        st.error(f"Błąd odczytu pliku {plik.name}: {e}")
+                        st.error(t["err_read_file"].format(plik.name, e))
         else:
-            st.warning("Najpierw wgraj przynajmniej jeden plik .har.")
+            st.warning(t["warn_no_files"])
 
     if excel_data_rows:
         st.write("")
-        st.subheader("📊 Zbiorcze Zestawienie Wyników (Bulk Export)")
+        st.subheader(t["table_summary_title"])
         df = pd.DataFrame(excel_data_rows)
         st.dataframe(df, use_container_width=True)
         
         csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
         st.download_button(
-            label="📥 Pobierz zbiorczy raport CSV",
+            label=t["btn_download_csv"],
             data=csv_data,
-            file_name="Zbiorczy_Raport_GA360_Detector.csv",
+            file_name=t["csv_filename"],
             mime="text/csv"
         )
 
 with tab2:
-    st.title("📚 Baza Wiedzy Analitycznej & Biznesowej")
-    st.markdown("Dokumentacja logiczna reguł wbudowana bezpośrednio w silnik weryfikacyjny detektywa.")
-    
-    st.subheader("🔴 Twarde Reguły i Limity (100% Pewności)")
-    
-    with st.expander("Reguła 1: Liczba parametrów niestandardowych w zdarzeniu (>25)"):
-        st.markdown("""
-        * **Tło techniczne:** W darmowej wersji Google Analytics 4 obowiązuje restrykcyjny limit **25 niestandardowych parametrów** przypisanych do jednego zdarzenia. Licencja korporacyjna **GA360 podnosi ten limit do 100**.
-        * **Logika detekcji:** Skrypt zlicza unikalne parametry z prefiksami `ep.` (tekstowe) oraz `epn.` (numeryczne) wewnątrz pojedynczego pinga sieciowego. Przekroczenie liczby 25 stanowi niezbity dowód na posiadanie usługi premium.
-        """)
-
-    with st.expander("Reguła 2: Maksymalna długość wartości parametru (>100 znaków)"):
-        st.markdown("""
-        * **Tło techniczne:** Standardowe GA4 automatycznie ucina wartości parametrów tekstowych (Custom Dimensions), jeśli przekraczają **100 znaków**. Wersja **GA360 pozwala na przechowywanie ciągów o długości do 500 znaków**. Jest to niezbędne przy zaawansowanym śledzeniu (np. pełne URLe, opisy błędów, zahaszowane identyfikatory).
-        * **Logika detekcji:** Silnik mierzy długość odkodowanych ciągów tekstowych parametrów niestandardowych. Zarejestrowanie wartości o długości 101 znaków lub większej automatycznie potwierdza licencję GA360.
-        """)
-
-    with st.expander("Reguła 3: Liczba właściwości użytkownika - User Properties (>25)"):
-        st.markdown("""
-        * **Tło techniczne:** Właściwości użytkownika służą do głębokiej segmentacji (np. poziom lojalności, status subskrypcji). Darmowe GA4 pozwala na rejestrację maksymalnie **25 User Properties na usługę**. Usługa **GA360 zwiększa ten próg do 100**.
-        * **Logika detekcji:** Filtrujemy parametry oznaczone prefiksem sieciowym `up.` oraz `upn.`. Przekroczenie liczby 25 unikalnych właściwości w jednym hicie aktywuje twardy werdykt.
-        """)
-
-    with st.expander("Reguła 4: Niestandardowe parametry produktu - Item-Scoped (>10)"):
-        st.markdown("""
-        * **Tło techniczne:** W darmowym GA4 do każdego przedmiotu w tablicy `items` (np. na liście produktów, w koszyku) można dopisać maksymalnie **10 niestandardowych wymiarów**. Wersja **GA360 rozszerza ten limit do 27 parametrów per produkt**.
-        * **Logika detekcji:** Analizujemy strukturę danych e-commerce. Jeśli pojedynczy produkt zawiera więcej niż 10 niestandardowych cech (po wykluczeniu parametrów natywnych typu brand, price, id), system uruchabia twardy werdykt.
-        """)
-
-    st.write("")
-    st.subheader("🟡 Dynamiczny Scoring Kontekstowy (Analiza Gęstości Danych)")
-
-    with st.expander("Jak czytać Pewność vs Punkty? (Instrukcja dekodowania)"):
-        st.markdown("""
-        System rozróżnia dwa pojęcia: **Pewność Werdyktu (%)** oraz **Punkty analityczne (max 99 pkt)**. 
-        Zazwyczaj te liczby są takie same. Rozjazd pojawia się w specyficznych sytuacjach, co pozwala zachować precyzję detekcji. W wyeksportowanym pliku CSV w kolumnie "Kluczowe uzasadnienie" znajdziesz rozbicie punktów na kategorie:
-
-        * **Infra (max 40 pkt):** Oceniana jest droga infrastruktura. System daje po 10 pkt za Server-Side Tagging, 10 pkt za Multi-tagging, oraz aż **20 pkt za wykrycie Campaign Managera 360** (lub 10 pkt za standardowe DV360).
-        * **Dane_Event (max 30 pkt):** Ocenia ciężar największego pojedynczego kliknięcia. Im bliżej darmowego limitu 25 parametrów w jednym hicie, tym więcej punktów. Wynik 0 pkt oznacza analitykę "z pudełka" (brak własnych zmiennych). 
-        * **Dane_Sesja (max 29 pkt):** Ocenia bogactwo słownika danych dla całej domeny. Dąży do nagradzania przekroczenia bariery 50 unikalnych parametrów w sesji.
+    if selected_lang == "PL":
+        st.title("📚 Baza Wiedzy Analitycznej & Biznesowej")
+        st.markdown("Dokumentacja logiczna reguł wbudowana bezpośrednio w silnik weryfikacyjny detektywa.")
         
-        **Kiedy Pewność (%) zachowuje się inaczej niż wyliczone Punkty?**
-        * **Przypadek 1 (Wysoka pewność darmowego GA4):** Sklep zdobył tylko 22/99 punktów, co oznacza, że szansa na posiadanie płatnego GA360 jest znikoma. Wtedy system dokonuje inwersji i stwierdza: Skoro mam ułamek szans na GA360, to moja pewność, że jest to Darmowe GA4 wynosi aż **78%** (`100 - 22`). 
-        * **Przypadek 2 (Twardy Dowód):** Klient zdobył tylko 50 punktów, ale w jednym ze zdarzeń przekroczył sztywny limit GA4 (np. użył 26 parametrów). Twardy dowód natychmiast ignoruje niską punktację z innych kategorii i ustawia Pewność Werdyktu na **100% GA360**.
-        """)
-
-    with st.expander("Wykrywanie Ad Servera: Campaign Manager 360 vs DV360"):
-        st.markdown("""
-        * **Tło techniczne:** Zarówno DV360, jak i CM360 współdzielą te same tagi konwersji (Floodlight). Jednak system potrafi rozpoznać droższy Ad Server (CM360) po charakterystycznych śladach sieciowych.
-        * **Ślad 1 (Identyfikator kliknięcia):** Obecność sygnatury `dclid=` (DoubleClick ID) w parametrach to dowód na bezpośrednie wejście z reklamy CM360.
-        * **Ślad 2 (Ścieżki DDM):** Obecność ciągów `/ddm/` (Direct Digital Marketing) oraz skryptów `dcmads.js` w URLach zapytań do infrastruktury DoubleClick.
-        * **Ślad 3 (Natywne parametry e-commerce):** Tagi sprzedażowe CM360 używają wbudowanych parametrów `cost=` (przychód) oraz `qty=` (ilość). Czyste DV360 zbiera te dane zazwyczaj przez zmienne niestandardowe (np. `u1=`, `u2=`).
-        * **Znaczenie biznesowe:** Wykrycie CM360 daje klientowi dwukrotnie więcej punktów w kategorii Infrastruktury. To potężny sygnał, że klient posiada scentralizowane zarządzanie kampaniami, ogromne budżety mediowe i jest gotowy na rozwiązania Enterprise.
-        """)
+        st.subheader("🔴 Twarde Reguły i Limity (100% Pewności)")
+        with st.expander("Reguła 1: Liczba parametrów niestandardowych w zdarzeniu (>25)"):
+            st.markdown("* **Tło techniczne:** W darmowej wersji GA4 obowiązuje restrykcyjny limit **25 niestandardowych parametrów** na event. Licencja **GA360 podnosi go do 100**.\n* **Logika detekcji:** Skrypt zlicza unikalne parametry z prefiksami `ep.` i `epn.`. Przekroczenie 25 to niezbity dowód na usługę premium.")
+        with st.expander("Reguła 2: Maksymalna długość wartości parametru (>100 znaków)"):
+            st.markdown("* **Tło techniczne:** Standardowe GA4 ucina wartości Custom Dimensions, jeśli przekraczają **100 znaków**. Wersja **GA360 pozwala na ciągi do 500 znaków**.\n* **Logika detekcji:** Silnik mierzy długość parametrów niestandardowych. Zarejestrowanie wartości >100 znaków automatycznie potwierdza licencję GA360.")
+        with st.expander("Reguła 3: Liczba właściwości użytkownika - User Properties (>25)"):
+            st.markdown("* **Tło techniczne:** Darmowe GA4 pozwala na rejestrację maksymalnie **25 User Properties**. Usługa **GA360 zwiększa ten próg do 100**.\n* **Logika detekcji:** Filtrujemy parametry `up.` oraz `upn.`. Przekroczenie 25 właściwości aktywuje twardy werdykt.")
+        with st.expander("Reguła 4: Niestandardowe parametry produktu - Item-Scoped (>10)"):
+            st.markdown("* **Tło techniczne:** W darmowym GA4 do każdego przedmiotu w tablicy `items` można dopisać maksymalnie **10 niestandardowych wymiarów**. Wersja **GA360 rozszerza ten limit do 27**.\n* **Logika detekcji:** Jeśli pojedynczy produkt zawiera więcej niż 10 niestandardowych cech, system uruchabia twardy werdykt.")
+        
+        st.write("")
+        st.subheader("🟡 Dynamiczny Scoring Kontekstowy (Analiza Gęstości Danych)")
+        with st.expander("Jak czytać Pewność vs Punkty? (Instrukcja dekodowania)"):
+            st.markdown("System rozróżnia **Pewność Werdyktu (%)** oraz **Punkty analityczne (max 99 pkt)**. Rozbicie punktów na kategorie:\n\n* **Infra (max 40 pkt):** Ocena infrastruktury. System daje po 10 pkt za Server-Side Tagging i Multi-tagging oraz aż **20 pkt za wykrycie Campaign Managera 360** (lub 10 pkt za DV360).\n* **Dane_Event (max 30 pkt):** Ciężar największego hitu sieciowego.\n* **Dane_Sesja (max 29 pkt):** Bogactwo unikalnych parametrów w sesji (barierą nagrody jest 50 unikalnych parametrów).")
+        with st.expander("Wykrywanie Ad Servera: Campaign Manager 360 vs DV360"):
+            st.markdown("* **Ślad 1 (Identyfikator kliknięcia):** Sygnatura `dclid=` to dowód na wejście z reklamy CM360.\n* **Ślad 2 (Ścieżki DDM):** Obecność ciągów `/ddm/` oraz skryptów `dcmads.js` w logach sieciowych DoubleClick.\n* **Ślad 3 (Natywne parametry e-commerce):** Tagi sprzedażowe CM360 używają wbudowanych parametrów `cost=` i `qty=`. Czyste DV360 zbiera te dane przez zmienne typu `u1=`.\n* **Znaczenie biznesowe:** Wykrycie CM360 daje podwójne punkty infrastruktury. Świadczy o ogromnych budżetach mediowych i gotowości na rozwiązania Enterprise.")
+    else:
+        st.title("📚 Analytics & Business Knowledge Base")
+        st.markdown("Logical documentation of the rules embedded directly within the detective's verification engine.")
+        
+        st.subheader("🔴 Hard Rules and Prohibitive Limits (100% Confidence)")
+        with st.expander("Rule 1: Number of custom parameters in an event (>25)"):
+            st.markdown("* **Technical Background:** Free GA4 applies a strict limit of **25 custom parameters** per event. The corporate **GA360 license raises this limit to 100**.\n* **Detection Logic:** The script counts unique parameters prefixed with `ep.` and `epn.`. Exceeding 25 is irrefutable proof of a premium license.")
+        with st.expander("Rule 2: Maximum parameter value length (>100 characters)"):
+            st.markdown("* **Technical Background:** Standard GA4 automatically truncates Custom Dimension string values if they exceed **100 characters**. **GA360 allows strings up to 500 characters**.\n* **Detection Logic:** The engine measures the length of custom parameters. Capturing a value >100 characters automatically confirms a GA360 setup.")
+        with st.expander("Rule 3: Number of User Properties (>25)"):
+            st.markdown("* **Technical Background:** Free GA4 allows a maximum of **25 User Properties**. The **GA360 service expands this threshold to 100**.\n* **Detection Logic:** We filter for `up.` and `upn.` parameters. Exceeding 25 unique properties triggers the hard verdict.")
+        with st.expander("Rule 4: Custom item-scoped dimensions per product (>10)"):
+            st.markdown("* **Technical Background:** In free GA4, you can append a maximum of **10 custom dimensions** to each item in the `items` array. **GA360 expands this limit to 27**.\n* **Detection Logic:** If a single product contains more than 10 custom item-scoped attributes, the system triggers a hard GA360 verdict.")
+        
+        st.write("")
+        st.subheader("🟡 Dynamic Contextual Scoring (Data Density Analysis)")
+        with st.expander("How to read Confidence vs Score Points? (Decoding Manual)"):
+            st.markdown("The system distinguishes between **Verdict Confidence (%)** and **Analysis Points (max 99 pts)**. Breakdown:\n\n* **Infra (max 40 pts):** Infrastructure evaluation. Awards 10 pts for Server-Side Tagging, 10 pts for Multi-tagging, and **20 pts for Campaign Manager 360** detection (or 10 pts for standard DV360).\n* **Data_Event (max 30 pts):** Evaluates the weight of the single heaviest network hit.\n* **Data_Session (max 29 pts):** Total vocabulary size (rewards properties exceeding 50 unique session parameters).")
+        with st.expander("Ad Server Detection: Campaign Manager 360 vs DV360"):
+            st.markdown("* **Footprint 1 (Click Identifier):** The presence of a `dclid=` parameter is proof of an entry via a CM360 ad.\n* **Footprint 2 (DDM Paths):** `/ddm/` paths and `dcmads.js` scripts inside DoubleClick network requests.\n* **Footprint 3 (Native E-commerce parameters):** CM360 sales tags utilize built-in `cost=` and `qty=` parameters. Standard DV360 usually collects this via custom variables like `u1=`.\n* **Business Impact:** Detecting CM360 awards double infrastructure points. It signals huge media budgets and enterprise readiness.")
 
 with tab3:
-    st.title("📥 Instrukcja Generowania Wartościowych Plików .HAR")
-    st.markdown("Aby algorytm matematyczny poprawnie przeanalizował strukturę danych i wykrył systemy analityczne, plik logów sieciowych musi zostać wygenerowany zgodnie z poniższą procedurą.")
+    st.title(t["har_title"])
+    st.markdown(t["har_subtitle"])
     
-    st.markdown("""
-    ### 🛠️ Instrukcja Krok po Kroku dla Konsultantów i Handlowców:
-    
-    #### 1️⃣ Krok 1: Przygotowanie czystego środowiska (Tryb Incognito)
-    * Zawsze otwieraj badany serwis w **nowym oknie incognito** przeglądarki (`Ctrl+Shift+N` lub `Cmd+Shift+N`).
-    * *Dlaczego?* Pozwala to całkowicie ominąć pliki cookie zapisane w pamięci podręcznej. Dzięki temu wymusisz na stronie ponowne wyświetlenie baneru prywatności oraz pełne załadowanie wszystkich skryptów inicjujących od zera.
-    
-    #### 2️⃣ Krok 2: Uruchomienie zakładki Network w DevTools
-    * Wejdź na stronę główną witryny, kliknij klawisz **F12** (lub kliknij prawym przyciskiem myszy i wybierz **Zbadaj**).
-    * Przejdź do górnej zakładki **Network** (Sieć).
-    
-    #### 3️⃣ Krok 3: Konfiguracja pancernego nagrywania (Preserve Log)
-    * Upewnij się, że okrągła ikona nagrywania w lewym górnym rogu DevTools świeci się na **czerwono**.
-    * ⚠️ **NAJWAŻNIEJSZY ELEMENT:** Bezwzględnie zaznacz checkbox **"Preserve log"** (Zachowaj logi). Jeśli tego nie zrobisz, w momencie przejścia ze strony głównej na podstronę przeglądarka wyczyści dotychczas zebrany ruch sieciowy!
-    
-    #### 4️⃣ Krok 4: KROK KRYTYCZNY – Pełna akceptacja Cookies
-    * Odśwież stronę (`F5`). Poczekaj na pojawienie się baneru zarządzania prywatnością (CMP).
-    * **Kliknij przycisk pełnej akceptacji wszystkich zgód marketingowych i analitycznych** (np. *'Akceptuję wszystko'*, *'Zgadzam się'*, *'Akceptuj wszystkie cookies'*).
-    * *Dlaczego to ważne?* Bez akceptacji zgód, systemy analityczne Enterprise zostaną całkowicie zablokowane i nie wygenerują ruchu w pliku HAR!
-    
-    #### 5️⃣ Krok 5: Przejście pełnej ścieżki e-commerce
-    * Kliknij w dowolny produkt i przejdź na **kartę produktu**.
-    * **Przescrolluj stronę powoli do samego dołu.** Wiele nowoczesnych systemów stosuje mechanizm *lazy-loadingu* i odpala skrypty analityczne dopiero wtedy, gdy użytkownik fizycznie dotrze ekranem do konkretnych sekcji strony.
-    
-    #### 6️⃣ Krok 6: Eksport pliku .HAR
-    * Kliknij **prawym przyciskiem myszy** w dowolnym miejscu na liście zarejestrowanych żądań w panelu DevTools.
-    * Wybierz opcję **"Save all as HAR with content"** (Zapisz wszystko jako HAR z zawartością).
-    """)
-    
-    st.success("🎯 Gotowe! Wrzuć wygenerowane pliki HAR do analizatora (pojedynczo lub masowo).")
+    if selected_lang == "PL":
+        st.markdown("""
+        ### 🛠️ Instrukcja Krok po Kroku dla Konsultantów i Handlowców:
+        
+        #### 1️⃣ Krok 1: Przygotowanie czystego środowiska (Tryb Incognito)
+        * Zawsze otwieraj badany serwis w **nowym oknie incognito** przeglądarki (`Ctrl+Shift+N` lub `Cmd+Shift+N`).
+        * *Dlaczego?* Pozwala to ominąć pliki cookie zapisane w pamięci. Dzięki temu wymusisz ponowne wyświetlenie baneru prywatności oraz pełne załadowanie wszystkich skryptów startowych od zera.
+        
+        #### 2️⃣ Krok 2: Uruchomienie zakładki Network w DevTools
+        * Wejdź na stronę główną, kliknij klawisz **F12** (lub kliknij prawym przyciskiem myszy i wybierz **Zbadaj**).
+        * Przejdź do górnej zakładki **Network** (Sieć).
+        
+        #### 3️⃣ Krok 3: Konfiguracja pancernego nagrywania (Preserve Log)
+        * Upewnij się, że okrągła ikona nagrywania w lewym górnym rogu panelu świeci się na **czerwono**.
+        * ⚠️ **NAJWAŻNIEJSZY ELEMENT:** Bezwzględnie zaznacz checkbox **"Preserve log"** (Zachowaj logi). Jeśli tego nie zrobisz, w momencie przejścia na podstronę przeglądarka wyczyści dotychczas zebrany ruch sieciowy!
+        
+        #### 4️⃣ Krok 4: KROK KRYTYCZNY – Pełna akceptacja Cookies
+        * Odśwież stronę (`F5`). Poczekaj na baner prywatności (CMP).
+        * **Kliknij przycisk pełnej akceptacji wszystkich zgód marketingowych i analitycznych** (np. *'Akceptuję wszystko'*, *'Zgadzam się'*).
+        * *Dlaczego to ważne?* Bez akceptacji zgód, systemy klasy Enterprise zostaną zablokowane i nie wygenerują żadnego ruchu sieciowego w pliku HAR!
+        
+        #### 5️⃣ Krok 5: Przejście pełnej ścieżki e-commerce
+        * Kliknij w produkt i przejdź na **kartę produktu**, a następnie dodaj go do **koszyka**.
+        * **Przescrolluj stronę powoli do samego dołu.** Mechanizmy *lazy-loadingu* często odpalają skrypty dopiero wtedy, gdy użytkownik fizycznie dotrze ekranem do sekcji koszyka czy stopek.
+        
+        #### 6️⃣ Krok 6: Eksport pliku .HAR
+        * Kliknij **prawym przyciskiem myszy** w dowolnym miejscu na liście żądań w panelu DevTools.
+        * Wybierz opcję **"Save all as HAR with content"** (Zapisz wszystko jako HAR z zawartością).
+        """)
+    else:
+        st.markdown("""
+        ### 🛠️ Step-by-Step Instructions for Consultants and Sales Teams:
+        
+        #### 1️⃣ Step 1: Prepare a Clean Environment (Incognito Mode)
+        * Always open the target website in a **new Incognito Window** (`Ctrl+Shift+N` or `Cmd+Shift+N`).
+        * *Why?* This bypasses all cached cookies. It forces the website to re-display the privacy banner and execute all tracking initialization scripts from scratch.
+        
+        #### 2️⃣ Step 2: Open the Network Tab in DevTools
+        * Go to the website's homepage, press **F12** (or right-click and select **Inspect**).
+        * Navigate to the **Network** tab at the top.
+        
+        #### 3️⃣ Step 3: Configure Persistent Recording (Preserve Log)
+        * Ensure the circular recording icon in the top-left corner of the DevTools panel is **red**.
+        * ⚠️ **CRITICAL ELEMENT:** Absolutely check the **"Preserve log"** checkbox. If left unchecked, the browser will wipe all captured network traffic the moment you navigate away from the homepage!
+        
+        #### 4️⃣ Step 4: THE CRITICAL STEP – Full Cookie Acceptance
+        * Refresh the page (`F5`). Wait for the privacy consent banner (CMP) to pop up.
+        * **Click the primary button to accept all marketing and analytical tracking** (e.g., *'Accept All'*, *'Agree'*).
+        * *Why does this matter?* Without explicit consent, Enterprise-level tracking systems will remain entirely blocked and won't fire any network pings into the HAR file!
+        
+        #### 5️⃣ Step 5: Execute the Full E-commerce Funnel
+        * Click on any item to open the **product page**, then add it to the **cart**.
+        * **Slowly scroll to the bottom of the page.** Modern lazy-loading and conditional firing frameworks often delay enterprise tags until the user reaches the footer or cart interaction sections.
+        
+        #### 6️⃣ Step 6: Export the .HAR File
+        * **Right-click** anywhere inside the list of recorded network requests in the DevTools panel.
+        * Select **"Save all as HAR with content"**.
+        """)
+        
+    st.success("🎯 Done!" if selected_lang=="EN" else "🎯 Gotowe! Wrzuć wygenerowane pliki HAR do analizatora (pojedynczo lub masowo).")
