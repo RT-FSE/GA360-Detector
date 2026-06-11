@@ -9,13 +9,14 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 st.sidebar.markdown("**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**")
-st.sidebar.caption("Wersja: 17")
+st.sidebar.caption("Wersja: 18")
 
 st.sidebar.info("""
-**🔄 Co nowego w wersji 17?**
+**🔄 Co nowego w wersji 18?**
+* **Nowa nomenklatura reguł:** Uporządkowano nazewnictwo w tabeli wyników według przejrzystego schematu (Typ Główny + Doprecyzowanie).
 * **Usunięcie SA360:** Optymalizacja reguł (usunięto rzadko występujące parametry wyszukiwarkowe).
 * **Nowe sygnatury CM360:** Dodano wykrywanie identyfikatorów `dclid=` oraz szerszych ścieżek Ad Servera (DCM).
-* **Przejrzysty podział GMP:** Rozbicie tabeli na dwa główne bloki: Campaign Manager 360 vs Display & Video 360.
+* **Przejrzysty podział GMP:** Rozbicie tabeli na bloki Campaign Manager 360 vs Display & Video 360.
 """)
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
@@ -297,15 +298,15 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
 
 | Stan | Typ reguły | Reguła walidacyjna / Limit | Wynik analizy sieciowej |
 | :---: | :--- | :--- | :--- |
-| {r1} | Krytyczna (Twarda) | Liczba parametrów > 25 w evencie | Wykryto maks: {max_ep_per_event} |
-| {r2} | Krytyczna (Twarda) | Długość wartości parametru custom > 100 znaków | Najdłuższy niestandardowy: {max_custom_param_len} znaków |
-| {r3} | Krytyczna (Twarda) | Właściwości użytkownika (User Properties) > 25 | Wykryto maks: {max_up_per_event} |
-| {r4} | Krytyczna (Twarda) | Niestandardowe parametry produktu (item-scoped) > 10 | Wykryto maks: {max_item_params} w jednym produkcie |
-| {r5} | Kontekstowa (Miękka) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
-| {r6} | Kontekstowa (Miękka) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
-| {r7} | Kontekstowa (Miękka) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
-| {r8} | Kontekstowa (GMP) | Ad Server: Campaign Manager 360 | Sygnatury (/ddm/, cost, qty, dclid): {"Tak" if cm360_evidence else "Nie"} |
-| {r9} | Kontekstowa (GMP) | DSP: Display & Video 360 | Bazowe tagi Floodlight: {"Tak" if gmp_evidence else "Nie"} |
+| {r1} | Twarda (Limit zdarzenia) | Liczba parametrów > 25 w evencie | Wykryto maks: {max_ep_per_event} |
+| {r2} | Twarda (Limit rozmiaru) | Długość wartości parametru custom > 100 znaków | Najdłuższy niestandardowy: {max_custom_param_len} znaków |
+| {r3} | Twarda (Limit użytkownika) | Właściwości użytkownika (User Properties) > 25 | Wykryto maks: {max_up_per_event} |
+| {r4} | Twarda (Limit produktu) | Niestandardowe parametry produktu (item-scoped) > 10 | Wykryto maks: {max_item_params} w jednym produkcie |
+| {r5} | Kontekstowa (Gęstość danych) | Suma unikalnych parametrów ep.* w sesji > 50 | Wykryto łącznie: {len(globalne_ep_params)} unikalnych |
+| {r6} | Kontekstowa (Architektura IT) | Server-Side Tagging (Endpoint w 1st-party domain) | Wykryto punkt zbiórki: {server_side_domain} |
+| {r7} | Kontekstowa (Zarządzanie) | Korporacyjny Multi-tagging | GA4 tagi: {"Tak ("+str(len(wykryte_ga4_tids))+")" if len(wykryte_ga4_tids)>1 else "Nie"} |
+| {r8} | Kontekstowa (Ad Server) | Ad Server: Campaign Manager 360 | Sygnatury (/ddm/, cost, qty, dclid): {"Tak" if cm360_evidence else "Nie"} |
+| {r9} | Kontekstowa (DSP) | DSP: Display & Video 360 | Bazowe tagi Floodlight: {"Tak" if gmp_evidence else "Nie"} |
 """
     json_payload = {
         "verdict": werdykt,
