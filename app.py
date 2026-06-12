@@ -13,16 +13,17 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 36",
+    "sidebar_version": "Version: 39",
     "sidebar_changelog": """
-**🔄 What's new in version 36?**
-* **Stability Fix:** Completely removed deprecated layout parameters (`use_container_width` / `width="stretch"`) that were causing conflicts and ASGI application exceptions in Streamlit Cloud.
-* **1-Click Clear:** Added a button to instantly remove all uploaded HAR files and reset the scanner.
-* **Alphabetical Sorting:** The Detailed Analysis Report is now automatically sorted alphabetically by domain for easier reading.
+**🔄 What's new in version 39?**
+* **Clean Export Table:** Removed verbose text (e.g., "Max detected: X") from the bulk summary table. It now strictly displays clean `[✅]` / `[❌]` indicators, making the Excel/TSV exports highly scannable. Detailed metrics remain available inside individual domain expanders.
+* **UI/UX Enhancement:** Full-width rendering for the Detailed Analysis Report (`width='stretch'`).
+* **HAR Size Optimization:** Critical instruction added to prevent server timeouts by filtering out media/images.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
     "upload_desc": "Export `.har` files from your browser and upload them below. **You can drag and drop multiple files at once.**",
+    "upload_warning": "⚠️ **Pro-tip:** To prevent server timeouts, ensure your `.har` files are under 200MB. Check the instruction tab to learn how to generate lightweight logs.",
     "btn_clear_files": "🗑️ Clear uploaded files",
     "upload_label": "Choose .har files",
     "btn_analyze": "🔍 Analyze Uploaded Files",
@@ -87,8 +88,8 @@ t = {
     "verdict_free": "Free GA4",
     "reason_no_ga": "No Google traffic detected. Classification based on competitor market footprints.",
     "reason_pts": "Analysis Score: {}/99 pts (Infra: {}/40 pts, Data_Event: {}/30 pts, Data_Session: {}/29 pts)",
-    "har_title": "📥 Guide to Generating Actionable .HAR Files",
-    "har_subtitle": "In order for the mathematical algorithm to properly analyze the data structure and detect enterprise systems, the network logs must be generated according to the following procedure."
+    "har_title": "📥 Guide to Generating Actionable (and Lightweight) .HAR Files",
+    "har_subtitle": "Follow this procedure to generate network logs that are rich in analytics data but small enough to avoid server timeout crashes."
 }
 
 # --- ZARZĄDZANIE STANEM WIDŻETU (Do przycisku Clear) ---
@@ -98,7 +99,6 @@ if "uploader_key" not in st.session_state:
 # --- PANEL BOCZNY (SIDEBAR) ---
 logo_path = "FSE_Logo.png"
 if os.path.exists(logo_path):
-    # Usunięto problematyczne atrybuty szerokości
     st.sidebar.image(logo_path)
 else:
     st.sidebar.markdown("<h3 style='text-align: center; color: #888;'>[ LOGO ]</h3>", unsafe_allow_html=True)
@@ -354,7 +354,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
     cm360_dclid_str = "Yes" if cm360_dclid else "No"
     
     cm360_szczegoly_md = f"**/ddm/:** {cm360_ddm_str}, **cost:** {cm360_cost_str}, **qty:** {cm360_qty_str}, **dclid:** {cm360_dclid_str}"
-    cm360_szczegoly_clean = f"/ddm/: {cm360_ddm_str}, cost: {cm360_cost_str}, qty: {cm360_qty_str}, dclid: {cm360_dclid_str}"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
@@ -435,15 +434,15 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
         "other_systems_text": inny_system_display,
         "reason": uzasadnienie_tekst,
         "rules": {
-            "r1": f"{r1} {t_dict['rule_t1_res'].format(max_ep_per_event)}",
-            "r2": f"{r2} {t_dict['rule_t2_res'].format(max_custom_param_len)}",
-            "r3": f"{r3} {t_dict['rule_t3_res'].format(max_up_per_event)}",
-            "r4": f"{r4} {t_dict['rule_t4_res'].format(max_item_params)}",
-            "r5": f"{r5} {t_dict['rule_m5_res'].format(len(globalne_ep_params))}",
-            "r6": f"{r6} {t_dict['rule_m6_res'].format(server_side_domain)}",
-            "r7": f"{r7} " + (t_dict['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t_dict['rule_m7_res_no']),
-            "r8": f"{r8} {cm360_szczegoly_clean}",
-            "r9": f"{r9} " + (t_dict['rule_m9_res_yes'] if gmp_evidence else t_dict['rule_m9_res_no'])
+            "r1": r1,
+            "r2": r2,
+            "r3": r3,
+            "r4": r4,
+            "r5": r5,
+            "r6": r6,
+            "r7": r7,
+            "r8": r8,
+            "r9": r9
         }
     }
     
@@ -464,8 +463,8 @@ with tab1:
     col_desc, col_clear = st.columns([4, 1])
     with col_desc:
         st.markdown(t["upload_desc"])
+        st.caption(t["upload_warning"])
     with col_clear:
-        # Usunięto problematyczne atrybuty szerokości
         if st.button(t["btn_clear_files"]):
             st.session_state.uploader_key += 1
             st.rerun()
@@ -574,8 +573,7 @@ with tab1:
         detailed_data_rows.sort(key=lambda x: str(x.get(t["csv_col_domain"], "")).lower())
         
         df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
-        # Usunięto problematyczne atrybuty szerokości
-        st.dataframe(df_detailed)
+        st.dataframe(df_detailed, width='stretch')
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
@@ -618,9 +616,14 @@ with tab3:
     st.markdown("""
     ### 🛠️ Step-by-Step Instructions for Consultants and Sales Teams:
     
+    #### 0️⃣ Step 0: CRITICAL PRE-REQUISITE (Filter out media)
+    * Open DevTools (`F12`) and navigate to the **Network** tab.
+    * Click the **Filter** icon (looks like a funnel) and select **`Fetch/XHR`** (or block `Img` and `Media`).
+    * *Why?* Unfiltered `.har` files from e-commerce sites can exceed 300MB, which will crash the server and cause a `ClientDisconnect` error during upload. **Only analytical data matters!**
+
     #### 1️⃣ Step 1: Prepare a Clean Environment (Incognito Mode)
     * Always open the target website in a **new Incognito Window** (`Ctrl+Shift+N` or `Cmd+Shift+N`).
-    * *Why?* This bypasses all cached cookies. It forces the website to re-display the privacy banner and execute all tracking initialization scripts from scratch.
+    * *Why?* This bypasses all cached cookies, forcing the website to re-display the privacy banner and execute all tracking scripts from scratch.
     
     #### 2️⃣ Step 2: Open the Network Tab in DevTools
     * Go to the website's homepage, press **F12** (or right-click and select **Inspect**).
@@ -633,11 +636,11 @@ with tab3:
     #### 4️⃣ Step 4: THE CRITICAL STEP – Full Cookie Acceptance
     * Refresh the page (`F5`). Wait for the privacy consent banner (CMP) to pop up.
     * **Click the primary button to accept all marketing and analytical tracking** (e.g., *'Accept All'*, *'Agree'*).
-    * *Why does this matter?* Without explicit consent, Enterprise-level tracking systems will remain entirely blocked and won't fire any network pings into the HAR file!
+    * *Why?* Without explicit consent, Enterprise tracking systems remain blocked and won't ping the `.har` file!
     
     #### 5️⃣ Step 5: Execute the Full E-commerce Funnel
     * Click on any item to open the **product page**, then add it to the **cart**.
-    * **Slowly scroll to the bottom of the page.** Modern lazy-loading and conditional firing frameworks often delay enterprise tags until the user reaches the footer or cart interaction sections.
+    * **Slowly scroll to the bottom of the page.** Modern lazy-loading frameworks delay enterprise tags until the user reaches the footer.
     
     #### 6️⃣ Step 6: Export the .HAR File
     * **Right-click** anywhere inside the list of recorded network requests in the DevTools panel.
