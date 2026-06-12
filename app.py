@@ -13,12 +13,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 LANGUAGES = {
     "PL": {
         "sidebar_mode": "**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**",
-        "sidebar_version": "Wersja: 23",
+        "sidebar_version": "Wersja: 25",
         "sidebar_changelog": """
-**🔄 Co nowego w wersji 23?**
-* **Tabela Szczegółowa:** Dodano osobną, szeroką tabelę raportową obok zbiorczej. Znajdują się w niej pełne, rozbite na osobne kolumny wyniki weryfikacji dla wszystkich 9 reguł z symbolem stanu i dokładnymi wartościami.
-* **Organizacja UI:** Tabele eksportowe umieszczono w intuicyjnych zakładkach pod panelem głównym.
-* **Pełna dwujęzyczność (PL/EN):** Cały interfejs, baza wiedzy i instrukcja HAR przełączają się w locie.
+**🔄 Co nowego w wersji 25?**
+* **Optymalizacja UX:** Usunięto podstawową tabelę zbiorczą na rzecz jednej, wszechstronnej tabeli szczegółowej, która zawiera werdykty i wszystkie złamane limity w jednym miejscu.
+* **Samoobjaśniający się eksport:** Zostawiono wiersz legendy (opis reguł), dzięki czemu pobrany plik CSV od razu tłumaczy analitykom znaczenie kolumn.
+* **Pełna dwujęzyczność (PL/EN):** Cały interfejs, baza wiedzy i tabele eksportowe przełączają się w locie.
 """,
         "title": "GA360 Detector",
         "tabs": ["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"],
@@ -30,14 +30,9 @@ LANGUAGES = {
         "err_no_scripts": "W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.",
         "err_read_file": "Błąd odczytu pliku {}: {}",
         "warn_no_files": "Najpierw wgraj przynajmniej jeden plik .har.",
-        "tab_res_summary": "📊 Tabela Zbiorcza",
-        "tab_res_detailed": "🔎 Tabela Szczegółowa",
-        "table_summary_title": "📊 Zbiorcze Zestawienie Wyników (Bulk Export)",
-        "table_detailed_title": "🔎 Szczegółowy Raport Analizy (Pełne dane)",
-        "btn_download_csv": "📥 Pobierz zbiorczy raport CSV",
-        "btn_download_csv_detailed": "📥 Pobierz szczegółowy raport CSV",
-        "csv_filename": "Zbiorczy_Raport_GA360_Detector.csv",
-        "csv_filename_detailed": "Szczegolowy_Raport_GA360_Detector.csv",
+        "table_detailed_title": "📊 Szczegółowy Raport Analizy (Zestawienie Zbiorcze)",
+        "btn_download_csv_detailed": "📥 Pobierz raport CSV",
+        "csv_filename_detailed": "Raport_GA360_Detector.csv",
         "csv_err_msg": "Brak zdarzeń sieciowych.",
         "csv_col_domain": "Domena (z pliku)",
         "csv_col_verdict": "Werdykt końcowy",
@@ -54,31 +49,31 @@ LANGUAGES = {
         "table_header_type": "Typ reguły",
         "table_header_rule": "Reguła walidacyjna / Limit",
         "table_header_result": "Wynik analizy sieciowej",
-        "rule_t1_type": "Twarda (Limit zdarzenia)",
+        "rule_t1_type": "Reguła twarda #1 (Limit zdarzenia)",
         "rule_t1_desc": "Liczba parametrów > 25 w evencie",
         "rule_t1_res": "Wykryto maks: {}",
-        "rule_t2_type": "Twarda (Limit rozmiaru)",
+        "rule_t2_type": "Reguła twarda #2 (Limit rozmiaru)",
         "rule_t2_desc": "Długość wartości parametru custom > 100 znaków",
         "rule_t2_res": "Najdłuższy niestandardowy: {} znaków",
-        "rule_t3_type": "Twarda (Limit użytkownika)",
+        "rule_t3_type": "Reguła twarda #3 (Limit użytkownika)",
         "rule_t3_desc": "Właściwości użytkownika (User Properties) > 25",
         "rule_t3_res": "Wykryto maks: {}",
-        "rule_t4_type": "Twarda (Limit produktu)",
+        "rule_t4_type": "Reguła twarda #4 (Limit produktu)",
         "rule_t4_desc": "Niestandardowe parametry produktu (item-scoped) > 10",
         "rule_t4_res": "Wykryto maks: {} w jednym produkcie",
-        "rule_m5_type": "Kontekstowa (Gęstość danych)",
+        "rule_m5_type": "Reguła kontekstowa #1 (Gęstość danych)",
         "rule_m5_desc": "Suma unikalnych parametrów ep.* w sesji > 50",
         "rule_m5_res": "Wykryto łącznie: {} unikalnych",
-        "rule_m6_type": "Kontekstowa (Architektura IT)",
+        "rule_m6_type": "Reguła kontekstowa #2 (Architektura IT)",
         "rule_m6_desc": "Server-Side Tagging (Endpoint w 1st-party domain)",
         "rule_m6_res": "Wykryto punkt zbiórki: {}",
-        "rule_m7_type": "Kontekstowa (Zarządzanie)",
+        "rule_m7_type": "Reguła kontekstowa #3 (Zarządzanie)",
         "rule_m7_desc": "Korporacyjny Multi-tagging",
         "rule_m7_res_yes": "Tak ({})",
         "rule_m7_res_no": "Nie",
-        "rule_m8_type": "Kontekstowa (Ad Server)",
+        "rule_m8_type": "Reguła kontekstowa #4 (Ad Server)",
         "rule_m8_desc": "Ad Server: Campaign Manager 360",
-        "rule_m9_type": "Kontekstowa (DSP)",
+        "rule_m9_type": "Reguła kontekstowa #5 (DSP)",
         "rule_m9_desc": "DSP: Display & Video 360",
         "rule_m9_res_yes": "Tak",
         "rule_m9_res_no": "Nie",
@@ -99,12 +94,12 @@ LANGUAGES = {
     },
     "EN": {
         "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-        "sidebar_version": "Version: 23",
+        "sidebar_version": "Version: 25",
         "sidebar_changelog": """
-**🔄 What's new in version 23?**
-* **Detailed Data Table:** Added a separate, comprehensive report table next to the summary. It features fully expanded columns for all 9 validation rules with precise results and status indicators.
-* **UI Organization:** Export tables are now neatly organized into switchable tabs beneath the scan panel.
-* **Full Bilingual Support (PL/EN):** The entire UI, knowledge base, and HAR guide switch instantly.
+**🔄 What's new in version 25?**
+* **UX Optimization:** Removed the basic summary table in favor of a single, comprehensive detailed table that includes both the verdict and all checked rules.
+* **Self-Explanatory Export:** Kept the dedicated rule description row, making the downloaded CSV file an instant standalone report.
+* **Full Bilingual Support (PL/EN):** The entire UI, knowledge base, and export tables switch instantly.
 """,
         "title": "GA360 Detector",
         "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -116,14 +111,9 @@ LANGUAGES = {
         "err_no_scripts": "No analytics scripts or footprints were found in this HAR file. Ensure the file was recorded correctly.",
         "err_read_file": "Error reading file {}: {}",
         "warn_no_files": "Please upload at least one .har file first.",
-        "tab_res_summary": "📊 Summary Table",
-        "tab_res_detailed": "🔎 Detailed Table",
-        "table_summary_title": "📊 Bulk Export Summary Table",
-        "table_detailed_title": "🔎 Detailed Analysis Report (Full Data)",
-        "btn_download_csv": "📥 Download Bulk CSV Report",
-        "btn_download_csv_detailed": "📥 Download Detailed CSV Report",
-        "csv_filename": "Bulk_Report_GA360_Detector.csv",
-        "csv_filename_detailed": "Detailed_Report_GA360_Detector.csv",
+        "table_detailed_title": "📊 Detailed Analysis Report (Bulk Export)",
+        "btn_download_csv_detailed": "📥 Download CSV Report",
+        "csv_filename_detailed": "Report_GA360_Detector.csv",
         "csv_err_msg": "No network events.",
         "csv_col_domain": "Domain (from file)",
         "csv_col_verdict": "Final Verdict",
@@ -140,31 +130,31 @@ LANGUAGES = {
         "table_header_type": "Rule Type",
         "table_header_rule": "Validation Rule / Limit",
         "table_header_result": "Network Analysis Result",
-        "rule_t1_type": "Hard (Event Limit)",
+        "rule_t1_type": "Hard rule #1 (Event Limit)",
         "rule_t1_desc": "Number of custom parameters > 25 in a single event",
         "rule_t1_res": "Max detected: {}",
-        "rule_t2_type": "Hard (Size Limit)",
+        "rule_t2_type": "Hard rule #2 (Size Limit)",
         "rule_t2_desc": "Custom dimension string value length > 100 characters",
         "rule_t2_res": "Longest custom value: {} chars",
-        "rule_t3_type": "Hard (User Limit)",
+        "rule_t3_type": "Hard rule #3 (User Limit)",
         "rule_t3_desc": "Registered User Properties in a hit > 25",
         "rule_t3_res": "Max detected: {}",
-        "rule_t4_type": "Hard (Product Limit)",
+        "rule_t4_type": "Hard rule #4 (Product Limit)",
         "rule_t4_desc": "Custom item-scoped dimensions per product > 10",
         "rule_t4_res": "Max detected: {} in a single product",
-        "rule_m5_type": "Contextual (Data Density)",
+        "rule_m5_type": "Contextual rule #1 (Data Density)",
         "rule_m5_desc": "Total unique ep.* parameters in session > 50",
         "rule_m5_res": "Total detected: {} unique",
-        "rule_m6_type": "Contextual (IT Architecture)",
+        "rule_m6_type": "Contextual rule #2 (IT Architecture)",
         "rule_m6_desc": "Server-Side Tagging (Endpoint in a 1st-party domain)",
         "rule_m6_res": "Collection endpoint detected: {}",
-        "rule_m7_type": "Contextual (Governance)",
+        "rule_m7_type": "Contextual rule #3 (Governance)",
         "rule_m7_desc": "Corporate Multi-tagging setup",
         "rule_m7_res_yes": "Yes ({})",
         "rule_m7_res_no": "No",
-        "rule_m8_type": "Contextual (Ad Server)",
+        "rule_m8_type": "Contextual rule #4 (Ad Server)",
         "rule_m8_desc": "Ad Server: Campaign Manager 360",
-        "rule_m9_type": "Contextual (DSP)",
+        "rule_m9_type": "Contextual rule #5 (DSP)",
         "rule_m9_desc": "DSP: Display & Video 360",
         "rule_m9_res_yes": "Yes",
         "rule_m9_res_no": "No",
@@ -534,7 +524,6 @@ st.title(f"🕵️‍♂️ {t['title']}")
 tab1, tab2, tab3 = st.tabs(t["tabs"])
 
 with tab1:
-    excel_data_rows = []
     detailed_data_rows = []
 
     st.markdown(t["upload_desc"])
@@ -563,19 +552,15 @@ with tab1:
                             if not filtered_requests and not wykryte_inne:
                                 st.warning(t["err_no_scripts"])
                                 
-                                base_err_row = {
+                                detailed_err = {
                                     t["csv_col_domain"]: czysta_domena,
                                     t["csv_col_verdict"]: "Error" if selected_lang=="EN" else "Błąd / Brak danych",
                                     t["csv_col_confidence"]: "0%",
                                     t["csv_col_other"]: "No" if selected_lang=="EN" else "Nie",
-                                    t["csv_col_tid"]: "None" if selected_lang=="EN" else "Brak"
+                                    t["csv_col_tid"]: "None" if selected_lang=="EN" else "Brak",
+                                    t["csv_col_reason"]: t["csv_err_msg"]
                                 }
                                 
-                                summary_err = base_err_row.copy()
-                                summary_err[t["csv_col_reason"]] = t["csv_err_msg"]
-                                excel_data_rows.append(summary_err)
-                                
-                                detailed_err = base_err_row.copy()
                                 for rule_key in [t["rule_t1_type"], t["rule_t2_type"], t["rule_t3_type"], t["rule_t4_type"], t["rule_m5_type"], t["rule_m6_type"], t["rule_m7_type"], t["rule_m8_type"], t["rule_m9_type"]]:
                                     detailed_err[rule_key] = "-"
                                 detailed_data_rows.append(detailed_err)
@@ -590,22 +575,15 @@ with tab1:
                                 if len(parts) > 1:
                                     extracted_json = json.loads(parts[1].split(ticks)[0].strip())
                                     
-                                    # Generowanie wiersza bazowego
-                                    base_row = {
+                                    detailed_row = {
                                         t["csv_col_domain"]: czysta_domena,
                                         t["csv_col_verdict"]: extracted_json.get("verdict"),
                                         t["csv_col_confidence"]: extracted_json.get("confidence"),
                                         t["csv_col_other"]: extracted_json.get("other_systems_text"),
-                                        t["csv_col_tid"]: extracted_json.get("tid")
+                                        t["csv_col_tid"]: extracted_json.get("tid"),
+                                        t["csv_col_reason"]: extracted_json.get("reason")
                                     }
                                     
-                                    # Generowanie wiersza dla tabeli zbiorczej
-                                    summary_row = base_row.copy()
-                                    summary_row[t["csv_col_reason"]] = extracted_json.get("reason")
-                                    excel_data_rows.append(summary_row)
-                                    
-                                    # Generowanie wiersza dla tabeli szczegółowej (Reguły)
-                                    detailed_row = base_row.copy()
                                     rules_obj = extracted_json.get("rules", {})
                                     detailed_row[t["rule_t1_type"]] = rules_obj.get("r1", "")
                                     detailed_row[t["rule_t2_type"]] = rules_obj.get("r2", "")
@@ -623,35 +601,40 @@ with tab1:
         else:
             st.warning(t["warn_no_files"])
 
-    if excel_data_rows:
+    if detailed_data_rows:
         st.write("---")
-        t_sum, t_det = st.tabs([t["tab_res_summary"], t["tab_res_detailed"]])
+        st.subheader(t["table_detailed_title"])
         
-        with t_sum:
-            st.subheader(t["table_summary_title"])
-            df_summary = pd.DataFrame(excel_data_rows)
-            st.dataframe(df_summary, use_container_width=True)
-            
-            csv_summary = df_summary.to_csv(index=False, sep=';', encoding='utf-8-sig')
-            st.download_button(
-                label=t["btn_download_csv"],
-                data=csv_summary,
-                file_name=t["csv_filename"],
-                mime="text/csv"
-            )
-            
-        with t_det:
-            st.subheader(t["table_detailed_title"])
-            df_detailed = pd.DataFrame(detailed_data_rows)
-            st.dataframe(df_detailed, use_container_width=True)
-            
-            csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
-            st.download_button(
-                label=t["btn_download_csv_detailed"],
-                data=csv_detailed,
-                file_name=t["csv_filename_detailed"],
-                mime="text/csv"
-            )
+        # Wiersz z objaśnieniami dla tabeli
+        desc_row = {
+            t["csv_col_domain"]: "ℹ️ OPIS REGUŁY" if selected_lang == "PL" else "ℹ️ RULE DESCRIPTION",
+            t["csv_col_verdict"]: "-",
+            t["csv_col_confidence"]: "-",
+            t["csv_col_other"]: "-",
+            t["csv_col_tid"]: "-",
+            t["csv_col_reason"]: "-",
+            t["rule_t1_type"]: t["rule_t1_desc"],
+            t["rule_t2_type"]: t["rule_t2_desc"],
+            t["rule_t3_type"]: t["rule_t3_desc"],
+            t["rule_t4_type"]: t["rule_t4_desc"],
+            t["rule_m5_type"]: t["rule_m5_desc"],
+            t["rule_m6_type"]: t["rule_m6_desc"],
+            t["rule_m7_type"]: t["rule_m7_desc"],
+            t["rule_m8_type"]: t["rule_m8_desc"],
+            t["rule_m9_type"]: t["rule_m9_desc"]
+        }
+        
+        # Łączymy wiersz z opisami z właściwymi wynikami
+        df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
+        st.dataframe(df_detailed, use_container_width=True)
+        
+        csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
+        st.download_button(
+            label=t["btn_download_csv_detailed"],
+            data=csv_detailed,
+            file_name=t["csv_filename_detailed"],
+            mime="text/csv"
+        )
 
 with tab2:
     if selected_lang == "PL":
@@ -659,13 +642,13 @@ with tab2:
         st.markdown("Dokumentacja logiczna reguł wbudowana bezpośrednio w silnik weryfikacyjny detektywa.")
         
         st.subheader("🔴 Twarde Reguły i Limity (100% Pewności)")
-        with st.expander("Reguła 1: Liczba parametrów niestandardowych w zdarzeniu (>25)"):
+        with st.expander("Reguła twarda #1: Liczba parametrów niestandardowych w zdarzeniu (>25)"):
             st.markdown("* **Tło techniczne:** W darmowej wersji GA4 obowiązuje restrykcyjny limit **25 niestandardowych parametrów** na event. Licencja **GA360 podnosi go do 100**.\n* **Logika detekcji:** Skrypt zlicza unikalne parametry z prefiksami `ep.` i `epn.`. Przekroczenie 25 to niezbity dowód na usługę premium.")
-        with st.expander("Reguła 2: Maksymalna długość wartości parametru (>100 znaków)"):
+        with st.expander("Reguła twarda #2: Maksymalna długość wartości parametru (>100 znaków)"):
             st.markdown("* **Tło techniczne:** Standardowe GA4 ucina wartości Custom Dimensions, jeśli przekraczają **100 znaków**. Wersja **GA360 pozwala na ciągi do 500 znaków**.\n* **Logika detekcji:** Silnik mierzy długość parametrów niestandardowych. Zarejestrowanie wartości >100 znaków automatycznie potwierdza licencję GA360.")
-        with st.expander("Reguła 3: Liczba właściwości użytkownika - User Properties (>25)"):
+        with st.expander("Reguła twarda #3: Liczba właściwości użytkownika - User Properties (>25)"):
             st.markdown("* **Tło techniczne:** Darmowe GA4 pozwala na rejestrację maksymalnie **25 User Properties**. Usługa **GA360 zwiększa ten próg do 100**.\n* **Logika detekcji:** Filtrujemy parametry `up.` oraz `upn.`. Przekroczenie 25 właściwości aktywuje twardy werdykt.")
-        with st.expander("Reguła 4: Niestandardowe parametry produktu - Item-Scoped (>10)"):
+        with st.expander("Reguła twarda #4: Niestandardowe parametry produktu - Item-Scoped (>10)"):
             st.markdown("* **Tło techniczne:** W darmowym GA4 do każdego przedmiotu w tablicy `items` można dopisać maksymalnie **10 niestandardowych wymiarów**. Wersja **GA360 rozszerza ten limit do 27**.\n* **Logika detekcji:** Jeśli pojedynczy produkt zawiera więcej niż 10 niestandardowych cech, system uruchabia twardy werdykt.")
         
         st.write("")
@@ -679,13 +662,13 @@ with tab2:
         st.markdown("Logical documentation of the rules embedded directly within the detective's verification engine.")
         
         st.subheader("🔴 Hard Rules and Prohibitive Limits (100% Confidence)")
-        with st.expander("Rule 1: Number of custom parameters in an event (>25)"):
+        with st.expander("Hard rule #1: Number of custom parameters in an event (>25)"):
             st.markdown("* **Technical Background:** Free GA4 applies a strict limit of **25 custom parameters** per event. The corporate **GA360 license raises this limit to 100**.\n* **Detection Logic:** The script counts unique parameters prefixed with `ep.` and `epn.`. Exceeding 25 is irrefutable proof of a premium license.")
-        with st.expander("Rule 2: Maximum parameter value length (>100 characters)"):
+        with st.expander("Hard rule #2: Maximum parameter value length (>100 characters)"):
             st.markdown("* **Technical Background:** Standard GA4 automatically truncates Custom Dimension string values if they exceed **100 characters**. **GA360 allows strings up to 500 characters**.\n* **Detection Logic:** The engine measures the length of custom parameters. Capturing a value >100 characters automatically confirms a GA360 setup.")
-        with st.expander("Rule 3: Number of User Properties (>25)"):
+        with st.expander("Hard rule #3: Number of User Properties (>25)"):
             st.markdown("* **Technical Background:** Free GA4 allows a maximum of **25 User Properties**. The **GA360 service expands this threshold to 100**.\n* **Detection Logic:** We filter for `up.` and `upn.` parameters. Exceeding 25 unique properties triggers the hard verdict.")
-        with st.expander("Rule 4: Custom item-scoped dimensions per product (>10)"):
+        with st.expander("Hard rule #4: Custom item-scoped dimensions per product (>10)"):
             st.markdown("* **Technical Background:** In free GA4, you can append a maximum of **10 custom dimensions** to each item in the `items` array. **GA360 expands this limit to 27**.\n* **Detection Logic:** If a single product contains more than 10 custom item-scoped attributes, the system triggers a hard GA360 verdict.")
         
         st.write("")
