@@ -225,7 +225,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
         if czysta_domena != "Unknown domain" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
-        if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in url_lower for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
+        if any(x in hostname for x in ["fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in url_lower for x in ["/ddm/activity/", "/activityi", "dc_pre="]):
             gmp_evidence = True
             
         if any(x in url_lower for x in ["/ddm/", "dcmads.js"]):
