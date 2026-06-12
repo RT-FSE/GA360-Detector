@@ -13,12 +13,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 34",
+    "sidebar_version": "Version: 35",
     "sidebar_changelog": """
-**🔄 What's new in version 34?**
+**🔄 What's new in version 35?**
+* **Technical Update:** Replaced deprecated `use_container_width` parameters with `width='stretch'` to ensure compatibility with Streamlit versions > 1.58.0.
 * **1-Click Clear:** Added a button to instantly remove all uploaded HAR files and reset the scanner.
 * **Alphabetical Sorting:** The Detailed Analysis Report is now automatically sorted alphabetically by domain for easier reading.
-* **Bugfix:** Resolved `KeyError: 'har_title'` caused by a missing dictionary key in the instructions tab.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -98,7 +98,7 @@ if "uploader_key" not in st.session_state:
 # --- PANEL BOCZNY (SIDEBAR) ---
 logo_path = "FSE_Logo.png"
 if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, use_container_width=True)
+    st.sidebar.image(logo_path, width="stretch")
 else:
     st.sidebar.markdown("<h3 style='text-align: center; color: #888;'>[ LOGO ]</h3>", unsafe_allow_html=True)
 
@@ -460,12 +460,11 @@ tab1, tab2, tab3 = st.tabs(t["tabs"])
 with tab1:
     detailed_data_rows = []
 
-    # UI Wgrywania plików z przyciskiem do resetowania widżetu
     col_desc, col_clear = st.columns([4, 1])
     with col_desc:
         st.markdown(t["upload_desc"])
     with col_clear:
-        if st.button(t["btn_clear_files"], use_container_width=True):
+        if st.button(t["btn_clear_files"], width="stretch"):
             st.session_state.uploader_key += 1
             st.rerun()
 
@@ -570,12 +569,10 @@ with tab1:
             t["rule_m9_type"]: t["rule_m9_desc"]
         }
         
-        # Sortowanie alfabetyczne domen przed wyświetleniem
         detailed_data_rows.sort(key=lambda x: str(x.get(t["csv_col_domain"], "")).lower())
         
-        # Łączymy wiersz z opisami z posortowanymi wynikami
         df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
-        st.dataframe(df_detailed, use_container_width=True)
+        st.dataframe(df_detailed, width="stretch")
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
