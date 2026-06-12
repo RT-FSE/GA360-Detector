@@ -13,12 +13,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 LANGUAGES = {
     "PL": {
         "sidebar_mode": "**Tryb pracy: Masowa Analiza HAR (Bulk Upload)**",
-        "sidebar_version": "Wersja: 22",
+        "sidebar_version": "Wersja: 23",
         "sidebar_changelog": """
-**🔄 Co nowego w wersji 22?**
-* **Pełna dwujęzyczność (PL/EN):** Cały interfejs, baza wiedzy i instrukcja HAR przełączają się w locie bez używania zewnętrznego AI.
-* **Granularna analiza CM360:** System osobno ocenia obecność sygnatur Ad Servera (`/ddm/`, `cost`, `qty`, `dclid`).
-* **Rebalans pod CM360:** Wykrycie Campaign Managera 360 daje teraz aż 20 punktów (dwukrotnie więcej niż samo DV360).
+**🔄 Co nowego w wersji 23?**
+* **Tabela Szczegółowa:** Dodano osobną, szeroką tabelę raportową obok zbiorczej. Znajdują się w niej pełne, rozbite na osobne kolumny wyniki weryfikacji dla wszystkich 9 reguł z symbolem stanu i dokładnymi wartościami.
+* **Organizacja UI:** Tabele eksportowe umieszczono w intuicyjnych zakładkach pod panelem głównym.
+* **Pełna dwujęzyczność (PL/EN):** Cały interfejs, baza wiedzy i instrukcja HAR przełączają się w locie.
 """,
         "title": "GA360 Detector",
         "tabs": ["🚀 Panel Skanowania", "📚 Baza Wiedzy (EDU)", "📥 Instrukcja plików .HAR"],
@@ -30,9 +30,14 @@ LANGUAGES = {
         "err_no_scripts": "W tym pliku HAR nie znaleziono żadnych skryptów analitycznych. Upewnij się, że plik został poprawnie nagrany.",
         "err_read_file": "Błąd odczytu pliku {}: {}",
         "warn_no_files": "Najpierw wgraj przynajmniej jeden plik .har.",
+        "tab_res_summary": "📊 Tabela Zbiorcza",
+        "tab_res_detailed": "🔎 Tabela Szczegółowa",
         "table_summary_title": "📊 Zbiorcze Zestawienie Wyników (Bulk Export)",
+        "table_detailed_title": "🔎 Szczegółowy Raport Analizy (Pełne dane)",
         "btn_download_csv": "📥 Pobierz zbiorczy raport CSV",
+        "btn_download_csv_detailed": "📥 Pobierz szczegółowy raport CSV",
         "csv_filename": "Zbiorczy_Raport_GA360_Detector.csv",
+        "csv_filename_detailed": "Szczegolowy_Raport_GA360_Detector.csv",
         "csv_err_msg": "Brak zdarzeń sieciowych.",
         "csv_col_domain": "Domena (z pliku)",
         "csv_col_verdict": "Werdykt końcowy",
@@ -94,12 +99,12 @@ LANGUAGES = {
     },
     "EN": {
         "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-        "sidebar_version": "Version: 22",
+        "sidebar_version": "Version: 23",
         "sidebar_changelog": """
-**🔄 What's new in version 22?**
-* **Full Bilingual Support (PL/EN):** The entire UI, knowledge base, and HAR guide switch instantly without external AI.
-* **Granular CM360 Analysis:** System evaluates and displays separate flags for Ad Server signals (`/ddm/`, `cost`, `qty`, `dclid`).
-* **Scoring Rebalance for CM360:** Campaign Manager 360 detection now awards 20 points (double the weight of standalone DV360).
+**🔄 What's new in version 23?**
+* **Detailed Data Table:** Added a separate, comprehensive report table next to the summary. It features fully expanded columns for all 9 validation rules with precise results and status indicators.
+* **UI Organization:** Export tables are now neatly organized into switchable tabs beneath the scan panel.
+* **Full Bilingual Support (PL/EN):** The entire UI, knowledge base, and HAR guide switch instantly.
 """,
         "title": "GA360 Detector",
         "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -111,9 +116,14 @@ LANGUAGES = {
         "err_no_scripts": "No analytics scripts or footprints were found in this HAR file. Ensure the file was recorded correctly.",
         "err_read_file": "Error reading file {}: {}",
         "warn_no_files": "Please upload at least one .har file first.",
+        "tab_res_summary": "📊 Summary Table",
+        "tab_res_detailed": "🔎 Detailed Table",
         "table_summary_title": "📊 Bulk Export Summary Table",
+        "table_detailed_title": "🔎 Detailed Analysis Report (Full Data)",
         "btn_download_csv": "📥 Download Bulk CSV Report",
+        "btn_download_csv_detailed": "📥 Download Detailed CSV Report",
         "csv_filename": "Bulk_Report_GA360_Detector.csv",
+        "csv_filename_detailed": "Detailed_Report_GA360_Detector.csv",
         "csv_err_msg": "No network events.",
         "csv_col_domain": "Domain (from file)",
         "csv_col_verdict": "Final Verdict",
@@ -254,7 +264,7 @@ def filtruj_logi_har(har_json):
 # ==========================================
 # SILNIK LOKALNEJ ANALIZY (Dynamic Scoring)
 # ==========================================
-def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
+def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
     max_ep_per_event = 0
     max_custom_param_len = 0
     max_up_per_event = 0
@@ -262,7 +272,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     globalne_ep_params = set()
     wykryte_ga4_tids = set()
     wykryte_ads_tids = set()
-    server_side_domain = "Nie"
+    server_side_domain = "Nie" if selected_lang == "PL" else "No"
     
     gmp_evidence = False
     cm360_ddm = False
@@ -283,7 +293,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         hostname = parsed_url.hostname or ""
         url_lower = original_url.lower()
         
-        if czysta_domena != "Nieznana domena" and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
+        domena_check = "Nieznana domena" if selected_lang == "PL" else "Unknown domain"
+        if czysta_domena != domena_check and czysta_domena in hostname and not any(x in hostname for x in ["google", "doubleclick", "analytics", "facebook"]):
             server_side_domain = hostname
             
         if any(x in hostname for x in ["doubleclick.net", "fls.doubleclick.net", "ad.doubleclick.net"]) or any(x in url_lower for x in ["g.doubleclick", "/ddm/activity/", "/activityi", "/pagead/", "dc_pre="]):
@@ -402,14 +413,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     r4 = "[✅]" if max_item_params > 10 else "[❌]"
     
     r5 = "[✅]" if len(globalne_ep_params) > 50 else "[❌]"
-    r6 = "[✅]" if server_side_domain != "Nie" else "[❌]"
+    r6 = "[✅]" if server_side_domain not in ["Nie", "No"] else "[❌]"
     r7 = "[✅]" if len(wykryte_ga4_tids) > 1 else "[❌]"
     
     cm360_evidence = cm360_ddm or cm360_cost or cm360_qty or cm360_dclid
     r8 = "[✅]" if cm360_evidence else "[❌]"
     r9 = "[✅]" if gmp_evidence else "[❌]"
     
-    # Mapowanie stringów Tak/Nie dla wersji językowej
     txt_yes = "Yes" if selected_lang == "EN" else "Tak"
     txt_no = "No" if selected_lang == "EN" else "Nie"
     
@@ -418,12 +428,13 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     cm360_qty_str = txt_yes if cm360_qty else txt_no
     cm360_dclid_str = txt_yes if cm360_dclid else txt_no
     
-    cm360_szczegoly = f"**/ddm/:** {cm360_ddm_str}, **cost:** {cm360_cost_str}, **qty:** {cm360_qty_str}, **dclid:** {cm360_dclid_str}"
+    cm360_szczegoly_md = f"**/ddm/:** {cm360_ddm_str}, **cost:** {cm360_cost_str}, **qty:** {cm360_qty_str}, **dclid:** {cm360_dclid_str}"
+    cm360_szczegoly_clean = f"/ddm/: {cm360_ddm_str}, cost: {cm360_cost_str}, qty: {cm360_qty_str}, dclid: {cm360_dclid_str}"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
 
-    # --- MATEMATYKA (DYNAMIC SCORING) - REBALANS V20 ---
+    # --- MATEMATYKA (DYNAMIC SCORING) ---
     infra_score = 0
     if r6 == "[✅]": infra_score += 10
     if r7 == "[✅]": infra_score += 10
@@ -439,8 +450,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
     total_score = infra_score + data_score_ep + data_score_gl
 
     if len(wykryte_ga4_tids) == 0:
-        werdykt = t["verdict_no_ga"]
-        uzasadnienie_tekst = t["reason_no_ga"]
+        werdykt = t_dict["verdict_no_ga"]
+        uzasadnienie_tekst = t_dict["reason_no_ga"]
         if wykryte_inne:
             if "Adobe Analytics (Enterprise)" in wykryte_inne:
                 pewnosc = "100%"
@@ -449,55 +460,66 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne):
         else:
             pewnosc = "90%"
     else:
-        uzasadnienie_tekst = t["reason_pts"].format(total_score, infra_score, data_score_ep, data_score_gl)
+        uzasadnienie_tekst = t_dict["reason_pts"].format(total_score, infra_score, data_score_ep, data_score_gl)
         
         if twarda_regula_zlamana:
-            werdykt = t["verdict_ga360"]
+            werdykt = t_dict["verdict_ga360"]
             pewnosc = "100%"
         elif total_score >= 60:
-            werdykt = t["verdict_prob_ga360"]
+            werdykt = t_dict["verdict_prob_ga360"]
             pewnosc = f"{total_score}%"
         elif infra_score >= 20 and total_score < 60:
-            werdykt = t["verdict_free_infra"]
+            werdykt = t_dict["verdict_free_infra"]
             pewnosc = f"{100 - total_score}%"
         elif puste_zdarzenia_ga4:
-            werdykt = t["verdict_free_empty"]
+            werdykt = t_dict["verdict_free_empty"]
             pewnosc = "95%"
         else:
-            werdykt = t["verdict_free"]
+            werdykt = t_dict["verdict_free"]
             pewnosc = f"{100 - total_score}%"
 
-    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else t["verdict_no_ga"]
+    tid_ga4_display = ", ".join(list(wykryte_ga4_tids)) if wykryte_ga4_tids else t_dict["verdict_no_ga"]
     inny_system_display = f"{txt_yes}, {', '.join(wykryte_inne)}" if wykryte_inne else txt_no
 
     markdown_output = f"""
-* **{t['md_domain']}:** `{czysta_domena}`
-* **{t['md_verdict']}:** **{werdykt}**
-* **{t['md_confidence']}:** `{pewnosc}`
-* **{t['md_other']}:** `{inny_system_display}`
-* **{t['md_tids']}:** `{tid_ga4_display}`
+* **{t_dict['md_domain']}:** `{czysta_domena}`
+* **{t_dict['md_verdict']}:** **{werdykt}**
+* **{t_dict['md_confidence']}:** `{pewnosc}`
+* **{t_dict['md_other']}:** `{inny_system_display}`
+* **{t_dict['md_tids']}:** `{tid_ga4_display}`
 
 ---
-### 📋 {t['edu_subtitle'] if selected_lang=='PL' else 'Rule Validation Summary'}
+### 📋 {t_dict['edu_subtitle'] if selected_lang=='PL' else 'Rule Validation Summary'}
 
-| {t['table_header_status']} | {t['table_header_type']} | {t['table_header_rule']} | {t['table_header_result']} |
+| {t_dict['table_header_status']} | {t_dict['table_header_type']} | {t_dict['table_header_rule']} | {t_dict['table_header_result']} |
 | :---: | :--- | :--- | :--- |
-| {r1} | {t['rule_t1_type']} | {t['rule_t1_desc']} | {t['rule_t1_res'].format(max_ep_per_event)} |
-| {r2} | {t['rule_t2_type']} | {t['rule_t2_desc']} | {t['rule_t2_res'].format(max_custom_param_len)} |
-| {r3} | {t['rule_t3_type']} | {t['rule_t3_desc']} | {t['rule_t3_res'].format(max_up_per_event)} |
-| {r4} | {t['rule_t4_type']} | {t['rule_t4_desc']} | {t['rule_t4_res'].format(max_item_params)} |
-| {r5} | {t['rule_m5_type']} | {t['rule_m5_desc']} | {t['rule_m5_res'].format(len(globalne_ep_params))} |
-| {r6} | {t['rule_m6_type']} | {t['rule_m6_desc']} | {t['rule_m6_res'].format(server_side_domain)} |
-| {r7} | {t['rule_m7_type']} | {t['rule_m7_desc']} | {t['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t['rule_m7_res_no']} |
-| {r8} | {t['rule_m8_type']} | {t['rule_m8_desc']} | {cm360_szczegoly} |
-| {r9} | {t['rule_m9_type']} | {t['rule_m9_desc']} | {t['rule_m9_res_yes'] if gmp_evidence else t['rule_m9_res_no']} |
+| {r1} | {t_dict['rule_t1_type']} | {t_dict['rule_t1_desc']} | {t_dict['rule_t1_res'].format(max_ep_per_event)} |
+| {r2} | {t_dict['rule_t2_type']} | {t_dict['rule_t2_desc']} | {t_dict['rule_t2_res'].format(max_custom_param_len)} |
+| {r3} | {t_dict['rule_t3_type']} | {t_dict['rule_t3_desc']} | {t_dict['rule_t3_res'].format(max_up_per_event)} |
+| {r4} | {t_dict['rule_t4_type']} | {t_dict['rule_t4_desc']} | {t_dict['rule_t4_res'].format(max_item_params)} |
+| {r5} | {t_dict['rule_m5_type']} | {t_dict['rule_m5_desc']} | {t_dict['rule_m5_res'].format(len(globalne_ep_params))} |
+| {r6} | {t_dict['rule_m6_type']} | {t_dict['rule_m6_desc']} | {t_dict['rule_m6_res'].format(server_side_domain)} |
+| {r7} | {t_dict['rule_m7_type']} | {t_dict['rule_m7_desc']} | {t_dict['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t_dict['rule_m7_res_no']} |
+| {r8} | {t_dict['rule_m8_type']} | {t_dict['rule_m8_desc']} | {cm360_szczegoly_md} |
+| {r9} | {t_dict['rule_m9_type']} | {t_dict['rule_m9_desc']} | {t_dict['rule_m9_res_yes'] if gmp_evidence else t_dict['rule_m9_res_no']} |
 """
     json_payload = {
         "verdict": werdykt,
         "confidence": pewnosc,
         "tid": tid_ga4_display,
         "other_systems_text": inny_system_display,
-        "reason": uzasadnienie_tekst
+        "reason": uzasadnienie_tekst,
+        "rules": {
+            "r1": f"{r1} {t_dict['rule_t1_res'].format(max_ep_per_event)}",
+            "r2": f"{r2} {t_dict['rule_t2_res'].format(max_custom_param_len)}",
+            "r3": f"{r3} {t_dict['rule_t3_res'].format(max_up_per_event)}",
+            "r4": f"{r4} {t_dict['rule_t4_res'].format(max_item_params)}",
+            "r5": f"{r5} {t_dict['rule_m5_res'].format(len(globalne_ep_params))}",
+            "r6": f"{r6} {t_dict['rule_m6_res'].format(server_side_domain)}",
+            "r7": f"{r7} " + (t_dict['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t_dict['rule_m7_res_no']),
+            "r8": f"{r8} {cm360_szczegoly_clean}",
+            "r9": f"{r9} " + (t_dict['rule_m9_res_yes'] if gmp_evidence else t_dict['rule_m9_res_no'])
+        }
     }
     
     json_str = json.dumps(json_payload, indent=2)
@@ -513,6 +535,7 @@ tab1, tab2, tab3 = st.tabs(t["tabs"])
 
 with tab1:
     excel_data_rows = []
+    detailed_data_rows = []
 
     st.markdown(t["upload_desc"])
     wgrane_pliki = st.file_uploader(t["upload_label"], type=["har"], accept_multiple_files=True)
@@ -539,16 +562,26 @@ with tab1:
                         with st.expander(t["expander_title"].format(czysta_domena, plik.name), expanded=False):
                             if not filtered_requests and not wykryte_inne:
                                 st.warning(t["err_no_scripts"])
-                                excel_data_rows.append({
+                                
+                                base_err_row = {
                                     t["csv_col_domain"]: czysta_domena,
                                     t["csv_col_verdict"]: "Error" if selected_lang=="EN" else "Błąd / Brak danych",
                                     t["csv_col_confidence"]: "0%",
-                                    t["csv_col_tid"]: "None" if selected_lang=="EN" else "Brak",
                                     t["csv_col_other"]: "No" if selected_lang=="EN" else "Nie",
-                                    t["csv_col_reason"]: t["csv_err_msg"]
-                                })
+                                    t["csv_col_tid"]: "None" if selected_lang=="EN" else "Brak"
+                                }
+                                
+                                summary_err = base_err_row.copy()
+                                summary_err[t["csv_col_reason"]] = t["csv_err_msg"]
+                                excel_data_rows.append(summary_err)
+                                
+                                detailed_err = base_err_row.copy()
+                                for rule_key in [t["rule_t1_type"], t["rule_t2_type"], t["rule_t3_type"], t["rule_t4_type"], t["rule_m5_type"], t["rule_m6_type"], t["rule_m7_type"], t["rule_m8_type"], t["rule_m9_type"]]:
+                                    detailed_err[rule_key] = "-"
+                                detailed_data_rows.append(detailed_err)
+
                             else:
-                                response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne)
+                                response_text = analizuj_lokalnie(filtered_requests, czysta_domena, wykryte_inne, t)
                                 
                                 ticks = "`" * 3
                                 parts = response_text.split(f"{ticks}json")
@@ -556,32 +589,69 @@ with tab1:
                                 
                                 if len(parts) > 1:
                                     extracted_json = json.loads(parts[1].split(ticks)[0].strip())
-                                    excel_data_rows.append({
+                                    
+                                    # Generowanie wiersza bazowego
+                                    base_row = {
                                         t["csv_col_domain"]: czysta_domena,
                                         t["csv_col_verdict"]: extracted_json.get("verdict"),
                                         t["csv_col_confidence"]: extracted_json.get("confidence"),
-                                        t["csv_col_tid"]: extracted_json.get("tid"),
                                         t["csv_col_other"]: extracted_json.get("other_systems_text"),
-                                        t["csv_col_reason"]: extracted_json.get("reason")
-                                    })
+                                        t["csv_col_tid"]: extracted_json.get("tid")
+                                    }
+                                    
+                                    # Generowanie wiersza dla tabeli zbiorczej
+                                    summary_row = base_row.copy()
+                                    summary_row[t["csv_col_reason"]] = extracted_json.get("reason")
+                                    excel_data_rows.append(summary_row)
+                                    
+                                    # Generowanie wiersza dla tabeli szczegółowej (Reguły)
+                                    detailed_row = base_row.copy()
+                                    rules_obj = extracted_json.get("rules", {})
+                                    detailed_row[t["rule_t1_type"]] = rules_obj.get("r1", "")
+                                    detailed_row[t["rule_t2_type"]] = rules_obj.get("r2", "")
+                                    detailed_row[t["rule_t3_type"]] = rules_obj.get("r3", "")
+                                    detailed_row[t["rule_t4_type"]] = rules_obj.get("r4", "")
+                                    detailed_row[t["rule_m5_type"]] = rules_obj.get("r5", "")
+                                    detailed_row[t["rule_m6_type"]] = rules_obj.get("r6", "")
+                                    detailed_row[t["rule_m7_type"]] = rules_obj.get("r7", "")
+                                    detailed_row[t["rule_m8_type"]] = rules_obj.get("r8", "")
+                                    detailed_row[t["rule_m9_type"]] = rules_obj.get("r9", "")
+                                    
+                                    detailed_data_rows.append(detailed_row)
                     except Exception as e:
                         st.error(t["err_read_file"].format(plik.name, e))
         else:
             st.warning(t["warn_no_files"])
 
     if excel_data_rows:
-        st.write("")
-        st.subheader(t["table_summary_title"])
-        df = pd.DataFrame(excel_data_rows)
-        st.dataframe(df, use_container_width=True)
+        st.write("---")
+        t_sum, t_det = st.tabs([t["tab_res_summary"], t["tab_res_detailed"]])
         
-        csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
-        st.download_button(
-            label=t["btn_download_csv"],
-            data=csv_data,
-            file_name=t["csv_filename"],
-            mime="text/csv"
-        )
+        with t_sum:
+            st.subheader(t["table_summary_title"])
+            df_summary = pd.DataFrame(excel_data_rows)
+            st.dataframe(df_summary, use_container_width=True)
+            
+            csv_summary = df_summary.to_csv(index=False, sep=';', encoding='utf-8-sig')
+            st.download_button(
+                label=t["btn_download_csv"],
+                data=csv_summary,
+                file_name=t["csv_filename"],
+                mime="text/csv"
+            )
+            
+        with t_det:
+            st.subheader(t["table_detailed_title"])
+            df_detailed = pd.DataFrame(detailed_data_rows)
+            st.dataframe(df_detailed, use_container_width=True)
+            
+            csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
+            st.download_button(
+                label=t["btn_download_csv_detailed"],
+                data=csv_detailed,
+                file_name=t["csv_filename_detailed"],
+                mime="text/csv"
+            )
 
 with tab2:
     if selected_lang == "PL":
