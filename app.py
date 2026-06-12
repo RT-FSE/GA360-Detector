@@ -13,12 +13,13 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 39",
+    "sidebar_version": "Version: 40",
     "sidebar_changelog": """
-**🔄 What's new in version 39?**
-* **Clean Export Table:** Removed verbose text (e.g., "Max detected: X") from the bulk summary table. It now strictly displays clean `[✅]` / `[❌]` indicators, making the Excel/TSV exports highly scannable. Detailed metrics remain available inside individual domain expanders.
-* **UI/UX Enhancement:** Full-width rendering for the Detailed Analysis Report (`width='stretch'`).
-* **HAR Size Optimization:** Critical instruction added to prevent server timeouts by filtering out media/images.
+**🔄 What's new in version 40?**
+* **Critical Stability Fix:** Applied `width='stretch'` to `st.dataframe` to prevent ASGI exceptions in Streamlit 1.45+.
+* **Data Purity:** Removed the injected metadata row from the DataFrame. The table is now 100% clean data, enabling native Pandas sorting and typing.
+* **Error Handling:** Added `try/except` for JSON parsing to prevent unhandled crashes on malformed LLM/engine outputs.
+* **Logic Safeties:** Added fallback variables and implemented modulo 100 logic for the cache clearer.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -196,6 +197,8 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
     wykryte_ga4_tids = set()
     wykryte_ads_tids = set()
     server_side_domain = "No"
+    pewnosc = "N/A"
+    werdykt = "N/A"
     
     gmp_evidence = False
     cm360_ddm = False
@@ -354,6 +357,7 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
     cm360_dclid_str = "Yes" if cm360_dclid else "No"
     
     cm360_szczegoly_md = f"**/ddm/:** {cm360_ddm_str}, **cost:** {cm360_cost_str}, **qty:** {cm360_qty_str}, **dclid:** {cm360_dclid_str}"
+    cm360_szczegoly_clean = f"/ddm/: {cm360_ddm_str}, cost: {cm360_cost_str}, qty: {cm360_qty_str}, dclid: {cm360_dclid_str}"
     
     twarda_regula_zlamana = (r1 == "[✅]" or r2 == "[✅]" or r3 == "[✅]" or r4 == "[✅]")
     puste_zdarzenia_ga4 = (max_ep_per_event == 0 and max_item_params == 0 and len(globalne_ep_params) == 0)
@@ -466,7 +470,7 @@ with tab1:
         st.caption(t["upload_warning"])
     with col_clear:
         if st.button(t["btn_clear_files"]):
-            st.session_state.uploader_key += 1
+            st.session_state.uploader_key = (st.session_state.uploader_key + 1) % 100
             st.rerun()
 
     wgrane_pliki = st.file_uploader(
@@ -520,27 +524,38 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    extracted_json = json.loads(parts[1].split(ticks)[0].strip())
-                                    
+                                    try:
+                                        extracted_json = json.loads(parts[1].split(ticks)[0].strip())
+                                    except json.JSONDecodeError as e:
+                                        st.error(f"JSON Parsing Error for {czysta_domena}: {e}")
+                                        extracted_json = {
+                                            "verdict": "Error",
+                                            "confidence": "N/A",
+                                            "tid": "None",
+                                            "other_systems_text": "N/A",
+                                            "reason": "Engine output parsing failure",
+                                            "rules": {}
+                                        }
+                                        
                                     detailed_row = {
                                         t["csv_col_domain"]: czysta_domena,
-                                        t["csv_col_verdict"]: extracted_json.get("verdict"),
-                                        t["csv_col_confidence"]: extracted_json.get("confidence"),
-                                        t["csv_col_other"]: extracted_json.get("other_systems_text"),
-                                        t["csv_col_tid"]: extracted_json.get("tid"),
-                                        t["csv_col_reason"]: extracted_json.get("reason")
+                                        t["csv_col_verdict"]: extracted_json.get("verdict", "N/A"),
+                                        t["csv_col_confidence"]: extracted_json.get("confidence", "N/A"),
+                                        t["csv_col_other"]: extracted_json.get("other_systems_text", "N/A"),
+                                        t["csv_col_tid"]: extracted_json.get("tid", "N/A"),
+                                        t["csv_col_reason"]: extracted_json.get("reason", "N/A")
                                     }
                                     
                                     rules_obj = extracted_json.get("rules", {})
-                                    detailed_row[t["rule_t1_type"]] = rules_obj.get("r1", "")
-                                    detailed_row[t["rule_t2_type"]] = rules_obj.get("r2", "")
-                                    detailed_row[t["rule_t3_type"]] = rules_obj.get("r3", "")
-                                    detailed_row[t["rule_t4_type"]] = rules_obj.get("r4", "")
-                                    detailed_row[t["rule_m5_type"]] = rules_obj.get("r5", "")
-                                    detailed_row[t["rule_m6_type"]] = rules_obj.get("r6", "")
-                                    detailed_row[t["rule_m7_type"]] = rules_obj.get("r7", "")
-                                    detailed_row[t["rule_m8_type"]] = rules_obj.get("r8", "")
-                                    detailed_row[t["rule_m9_type"]] = rules_obj.get("r9", "")
+                                    detailed_row[t["rule_t1_type"]] = rules_obj.get("r1", "-")
+                                    detailed_row[t["rule_t2_type"]] = rules_obj.get("r2", "-")
+                                    detailed_row[t["rule_t3_type"]] = rules_obj.get("r3", "-")
+                                    detailed_row[t["rule_t4_type"]] = rules_obj.get("r4", "-")
+                                    detailed_row[t["rule_m5_type"]] = rules_obj.get("r5", "-")
+                                    detailed_row[t["rule_m6_type"]] = rules_obj.get("r6", "-")
+                                    detailed_row[t["rule_m7_type"]] = rules_obj.get("r7", "-")
+                                    detailed_row[t["rule_m8_type"]] = rules_obj.get("r8", "-")
+                                    detailed_row[t["rule_m9_type"]] = rules_obj.get("r9", "-")
                                     
                                     detailed_data_rows.append(detailed_row)
                     except Exception as e:
@@ -552,27 +567,9 @@ with tab1:
         st.write("---")
         st.subheader(t["table_detailed_title"])
         
-        desc_row = {
-            t["csv_col_domain"]: "ℹ️ RULE DESCRIPTION",
-            t["csv_col_verdict"]: "-",
-            t["csv_col_confidence"]: "-",
-            t["csv_col_other"]: "-",
-            t["csv_col_tid"]: "-",
-            t["csv_col_reason"]: "-",
-            t["rule_t1_type"]: t["rule_t1_desc"],
-            t["rule_t2_type"]: t["rule_t2_desc"],
-            t["rule_t3_type"]: t["rule_t3_desc"],
-            t["rule_t4_type"]: t["rule_t4_desc"],
-            t["rule_m5_type"]: t["rule_m5_desc"],
-            t["rule_m6_type"]: t["rule_m6_desc"],
-            t["rule_m7_type"]: t["rule_m7_desc"],
-            t["rule_m8_type"]: t["rule_m8_desc"],
-            t["rule_m9_type"]: t["rule_m9_desc"]
-        }
-        
         detailed_data_rows.sort(key=lambda x: str(x.get(t["csv_col_domain"], "")).lower())
         
-        df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
+        df_detailed = pd.DataFrame(detailed_data_rows)
         st.dataframe(df_detailed, width='stretch')
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
