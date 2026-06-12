@@ -13,16 +13,17 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 33",
+    "sidebar_version": "Version: 34",
     "sidebar_changelog": """
-**🔄 What's new in version 33?**
-* **Bugfix:** Finally and permanently resolved `KeyError: 'har_title'` by restoring missing dictionary keys for the HAR instructions tab.
-* **1-Click Copy to Clipboard:** Added a feature to instantly copy the detailed report (in Tab-Separated format) and paste it perfectly into Excel or Google Sheets.
-* **Official Branding:** Integrated the official Full Stack Experts logo.
+**🔄 What's new in version 34?**
+* **1-Click Clear:** Added a button to instantly remove all uploaded HAR files and reset the scanner.
+* **Alphabetical Sorting:** The Detailed Analysis Report is now automatically sorted alphabetically by domain for easier reading.
+* **Bugfix:** Resolved `KeyError: 'har_title'` caused by a missing dictionary key in the instructions tab.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
     "upload_desc": "Export `.har` files from your browser and upload them below. **You can drag and drop multiple files at once.**",
+    "btn_clear_files": "🗑️ Clear uploaded files",
     "upload_label": "Choose .har files",
     "btn_analyze": "🔍 Analyze Uploaded Files",
     "spinner_msg": "Analyzing file: {}...",
@@ -89,6 +90,10 @@ t = {
     "har_title": "📥 Guide to Generating Actionable .HAR Files",
     "har_subtitle": "In order for the mathematical algorithm to properly analyze the data structure and detect enterprise systems, the network logs must be generated according to the following procedure."
 }
+
+# --- ZARZĄDZANIE STANEM WIDŻETU (Do przycisku Clear) ---
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
 
 # --- PANEL BOCZNY (SIDEBAR) ---
 logo_path = "FSE_Logo.png"
@@ -455,8 +460,21 @@ tab1, tab2, tab3 = st.tabs(t["tabs"])
 with tab1:
     detailed_data_rows = []
 
-    st.markdown(t["upload_desc"])
-    wgrane_pliki = st.file_uploader(t["upload_label"], type=["har"], accept_multiple_files=True)
+    # UI Wgrywania plików z przyciskiem do resetowania widżetu
+    col_desc, col_clear = st.columns([4, 1])
+    with col_desc:
+        st.markdown(t["upload_desc"])
+    with col_clear:
+        if st.button(t["btn_clear_files"], use_container_width=True):
+            st.session_state.uploader_key += 1
+            st.rerun()
+
+    wgrane_pliki = st.file_uploader(
+        t["upload_label"], 
+        type=["har"], 
+        accept_multiple_files=True, 
+        key=f"uploader_{st.session_state.uploader_key}"
+    )
     
     if st.button(t["btn_analyze"]):
         if wgrane_pliki:
@@ -552,6 +570,10 @@ with tab1:
             t["rule_m9_type"]: t["rule_m9_desc"]
         }
         
+        # Sortowanie alfabetyczne domen przed wyświetleniem
+        detailed_data_rows.sort(key=lambda x: str(x.get(t["csv_col_domain"], "")).lower())
+        
+        # Łączymy wiersz z opisami z posortowanymi wynikami
         df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
         st.dataframe(df_detailed, use_container_width=True)
         
