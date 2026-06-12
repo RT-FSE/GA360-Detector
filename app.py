@@ -13,13 +13,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 40",
+    "sidebar_version": "Version: 41",
     "sidebar_changelog": """
-**🔄 What's new in version 40?**
-* **Critical Stability Fix:** Applied `width='stretch'` to `st.dataframe` to prevent ASGI exceptions in Streamlit 1.45+.
-* **Data Purity:** Removed the injected metadata row from the DataFrame. The table is now 100% clean data, enabling native Pandas sorting and typing.
-* **Error Handling:** Added `try/except` for JSON parsing to prevent unhandled crashes on malformed LLM/engine outputs.
-* **Logic Safeties:** Added fallback variables and implemented modulo 100 logic for the cache clearer.
+**🔄 What's new in version 41?**
+* **Data Richness Restored:** Brought back the detailed analytical text (e.g., 'Max detected: 45') inside the table columns instead of just showing icons.
+* **Legend Row Restored:** Re-injected the 'RULE DESCRIPTION' row at the top of the export table so users know exactly what limits are being tested.
+* **Smart Sorting:** The domain list is sorted alphabetically *before* the legend row is pinned to the top, ensuring perfect Excel/TSV exports.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -438,15 +437,15 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
         "other_systems_text": inny_system_display,
         "reason": uzasadnienie_tekst,
         "rules": {
-            "r1": r1,
-            "r2": r2,
-            "r3": r3,
-            "r4": r4,
-            "r5": r5,
-            "r6": r6,
-            "r7": r7,
-            "r8": r8,
-            "r9": r9
+            "r1": f"{r1} {t_dict['rule_t1_res'].format(max_ep_per_event)}",
+            "r2": f"{r2} {t_dict['rule_t2_res'].format(max_custom_param_len)}",
+            "r3": f"{r3} {t_dict['rule_t3_res'].format(max_up_per_event)}",
+            "r4": f"{r4} {t_dict['rule_t4_res'].format(max_item_params)}",
+            "r5": f"{r5} {t_dict['rule_m5_res'].format(len(globalne_ep_params))}",
+            "r6": f"{r6} {t_dict['rule_m6_res'].format(server_side_domain)}",
+            "r7": f"{r7} " + (t_dict['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t_dict['rule_m7_res_no']),
+            "r8": f"{r8} {cm360_szczegoly_clean}",
+            "r9": f"{r9} " + (t_dict['rule_m9_res_yes'] if gmp_evidence else t_dict['rule_m9_res_no'])
         }
     }
     
@@ -526,7 +525,7 @@ with tab1:
                                 if len(parts) > 1:
                                     try:
                                         extracted_json = json.loads(parts[1].split(ticks)[0].strip())
-                                    except json.JSONDecodeError as e:
+                                    except Exception as e:
                                         st.error(f"JSON Parsing Error for {czysta_domena}: {e}")
                                         extracted_json = {
                                             "verdict": "Error",
@@ -567,9 +566,30 @@ with tab1:
         st.write("---")
         st.subheader(t["table_detailed_title"])
         
+        # Sort data rows alphabetically by domain
         detailed_data_rows.sort(key=lambda x: str(x.get(t["csv_col_domain"], "")).lower())
         
-        df_detailed = pd.DataFrame(detailed_data_rows)
+        # Create the explanation row
+        desc_row = {
+            t["csv_col_domain"]: "ℹ️ RULE DESCRIPTION",
+            t["csv_col_verdict"]: "-",
+            t["csv_col_confidence"]: "-",
+            t["csv_col_other"]: "-",
+            t["csv_col_tid"]: "-",
+            t["csv_col_reason"]: "-",
+            t["rule_t1_type"]: t["rule_t1_desc"],
+            t["rule_t2_type"]: t["rule_t2_desc"],
+            t["rule_t3_type"]: t["rule_t3_desc"],
+            t["rule_t4_type"]: t["rule_t4_desc"],
+            t["rule_m5_type"]: t["rule_m5_desc"],
+            t["rule_m6_type"]: t["rule_m6_desc"],
+            t["rule_m7_type"]: t["rule_m7_desc"],
+            t["rule_m8_type"]: t["rule_m8_desc"],
+            t["rule_m9_type"]: t["rule_m9_desc"]
+        }
+        
+        # Combine the description row at the top with the sorted data below
+        df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
         st.dataframe(df_detailed, width='stretch')
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
