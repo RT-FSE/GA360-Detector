@@ -13,12 +13,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 32",
+    "sidebar_version": "Version: 33",
     "sidebar_changelog": """
-**🔄 What's new in version 32?**
+**🔄 What's new in version 33?**
+* **Bugfix:** Finally and permanently resolved `KeyError: 'har_title'` by restoring missing dictionary keys for the HAR instructions tab.
 * **1-Click Copy to Clipboard:** Added a feature to instantly copy the detailed report (in Tab-Separated format) and paste it perfectly into Excel or Google Sheets.
-* **Official Branding:** Integrated the official Full Stack Experts logo and updated the application version.
-* **Code Optimization:** Removed bilingual overhead. The application operates natively in English.
+* **Official Branding:** Integrated the official Full Stack Experts logo.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -85,7 +85,9 @@ t = {
     "verdict_free_empty": "Free GA4 (Empty Parameters)",
     "verdict_free": "Free GA4",
     "reason_no_ga": "No Google traffic detected. Classification based on competitor market footprints.",
-    "reason_pts": "Analysis Score: {}/99 pts (Infra: {}/40 pts, Data_Event: {}/30 pts, Data_Session: {}/29 pts)"
+    "reason_pts": "Analysis Score: {}/99 pts (Infra: {}/40 pts, Data_Event: {}/30 pts, Data_Session: {}/29 pts)",
+    "har_title": "📥 Guide to Generating Actionable .HAR Files",
+    "har_subtitle": "In order for the mathematical algorithm to properly analyze the data structure and detect enterprise systems, the network logs must be generated according to the following procedure."
 }
 
 # --- PANEL BOCZNY (SIDEBAR) ---
@@ -555,7 +557,6 @@ with tab1:
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
-        # Przycisk do pobierania CSV
         st.download_button(
             label=t["btn_download_csv_detailed"],
             data=csv_detailed,
@@ -563,7 +564,6 @@ with tab1:
             mime="text/csv"
         )
         
-        # 1-Click Copy za pomocą bloku kodu z danymi TSV
         tsv_detailed = df_detailed.to_csv(index=False, sep='\t')
         with st.expander(t["expander_copy"]):
             st.code(tsv_detailed, language="text")
