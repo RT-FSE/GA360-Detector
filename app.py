@@ -13,12 +13,12 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 31",
+    "sidebar_version": "Version: 32",
     "sidebar_changelog": """
-**🔄 What's new in version 31?**
-* **Bugfix:** Resolved `KeyError: 'har_title'` caused by a missing dictionary key in the instructions tab.
-* **Official Branding:** Integrated the official Full Stack Experts logo (`FSE_Logo.png`) and updated the application version.
-* **Bulletproof Item-Scoped Limits:** Completely rewritten the logic for detecting custom product parameters using a strict GA4 whitelist approach.
+**🔄 What's new in version 32?**
+* **1-Click Copy to Clipboard:** Added a feature to instantly copy the detailed report (in Tab-Separated format) and paste it perfectly into Excel or Google Sheets.
+* **Official Branding:** Integrated the official Full Stack Experts logo and updated the application version.
+* **Code Optimization:** Removed bilingual overhead. The application operates natively in English.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
@@ -32,6 +32,7 @@ t = {
     "warn_no_files": "Please upload at least one .har file first.",
     "table_detailed_title": "📊 Detailed Analysis Report (Bulk Export)",
     "btn_download_csv_detailed": "📥 Download CSV Report",
+    "expander_copy": "📋 1-Click Copy to Clipboard (Paste directly to Excel/Google Sheets)",
     "csv_filename_detailed": "Report_GA360_Detector.csv",
     "csv_err_msg": "No network events.",
     "csv_col_domain": "Domain (from file)",
@@ -88,7 +89,6 @@ t = {
 }
 
 # --- PANEL BOCZNY (SIDEBAR) ---
-# 1. Logo na samej górze
 logo_path = "FSE_Logo.png"
 if os.path.exists(logo_path):
     st.sidebar.image(logo_path, use_container_width=True)
@@ -100,7 +100,6 @@ st.sidebar.markdown(t["sidebar_mode"])
 st.sidebar.caption(t["sidebar_version"])
 st.sidebar.info(t["sidebar_changelog"])
 
-# 2. Stopka na dole panelu bocznego
 st.sidebar.markdown(
     """
     <div style="margin-top: 50px; text-align: center; color: #888;">
@@ -555,12 +554,19 @@ with tab1:
         st.dataframe(df_detailed, use_container_width=True)
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
+        
+        # Przycisk do pobierania CSV
         st.download_button(
             label=t["btn_download_csv_detailed"],
             data=csv_detailed,
             file_name=t["csv_filename_detailed"],
             mime="text/csv"
         )
+        
+        # 1-Click Copy za pomocą bloku kodu z danymi TSV
+        tsv_detailed = df_detailed.to_csv(index=False, sep='\t')
+        with st.expander(t["expander_copy"]):
+            st.code(tsv_detailed, language="text")
 
 with tab2:
     st.title("📚 Analytics & Business Knowledge Base")
@@ -584,8 +590,8 @@ with tab2:
         st.markdown("* **Footprint 1 (Click Identifier):** The presence of a `dclid=` parameter is proof of an entry via a CM360 ad.\n* **Footprint 2 (DDM Paths):** `/ddm/` paths and `dcmads.js` scripts inside DoubleClick network requests.\n* **Footprint 3 (Native E-commerce parameters):** CM360 sales tags utilize built-in `cost=` and `qty=` parameters. Standard DV360 usually collects this via custom variables like `u1=`.\n* **Business Impact:** Detecting CM360 awards double infrastructure points. It signals huge media budgets and enterprise readiness.")
 
 with tab3:
-    st.title("📥 Guide to Generating Actionable .HAR Files")
-    st.markdown("In order for the mathematical algorithm to properly analyze the data structure and detect enterprise systems, the network logs must be generated according to the following procedure.")
+    st.title(t["har_title"])
+    st.markdown(t["har_subtitle"])
     
     st.markdown("""
     ### 🛠️ Step-by-Step Instructions for Consultants and Sales Teams:
