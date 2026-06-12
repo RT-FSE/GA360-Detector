@@ -13,19 +13,16 @@ st.set_page_config(page_title="GA360 Detector", page_icon="🕵️‍♂️", la
 # ==========================================
 t = {
     "sidebar_mode": "**Operation Mode: Bulk HAR Analysis (Upload)**",
-    "sidebar_version": "Version: 40",
+    "sidebar_version": "Version: 30",
     "sidebar_changelog": """
-**🔄 What's new in version 40?**
-* **Critical Stability Fix:** Applied `width='stretch'` to `st.dataframe` to prevent ASGI exceptions in Streamlit 1.45+.
-* **Data Purity:** Removed the injected metadata row from the DataFrame. The table is now 100% clean data, enabling native Pandas sorting and typing.
-* **Error Handling:** Added `try/except` for JSON parsing to prevent unhandled crashes on malformed LLM/engine outputs.
-* **Logic Safeties:** Added fallback variables and implemented modulo 100 logic for the cache clearer.
+**🔄 What's new in version 30?**
+* **Official Branding:** Integrated the official Full Stack Experts logo (`FSE_Logo.png`) and updated the application version.
+* **Branding:** Added copyright footer at the bottom of the sidebar.
+* **Bulletproof Item-Scoped Limits:** Completely rewritten the logic for detecting custom product parameters using a strict GA4 whitelist approach.
 """,
     "title": "GA360 Detector",
     "tabs": ["🚀 Scan Panel", "📚 Knowledge Base (EDU)", "📥 .HAR File Guide"],
     "upload_desc": "Export `.har` files from your browser and upload them below. **You can drag and drop multiple files at once.**",
-    "upload_warning": "⚠️ **Pro-tip:** To prevent server timeouts, ensure your `.har` files are under 200MB. Check the instruction tab to learn how to generate lightweight logs.",
-    "btn_clear_files": "🗑️ Clear uploaded files",
     "upload_label": "Choose .har files",
     "btn_analyze": "🔍 Analyze Uploaded Files",
     "spinner_msg": "Analyzing file: {}...",
@@ -35,7 +32,6 @@ t = {
     "warn_no_files": "Please upload at least one .har file first.",
     "table_detailed_title": "📊 Detailed Analysis Report (Bulk Export)",
     "btn_download_csv_detailed": "📥 Download CSV Report",
-    "expander_copy": "📋 1-Click Copy to Clipboard (Paste directly to Excel/Google Sheets)",
     "csv_filename_detailed": "Report_GA360_Detector.csv",
     "csv_err_msg": "No network events.",
     "csv_col_domain": "Domain (from file)",
@@ -88,19 +84,14 @@ t = {
     "verdict_free_empty": "Free GA4 (Empty Parameters)",
     "verdict_free": "Free GA4",
     "reason_no_ga": "No Google traffic detected. Classification based on competitor market footprints.",
-    "reason_pts": "Analysis Score: {}/99 pts (Infra: {}/40 pts, Data_Event: {}/30 pts, Data_Session: {}/29 pts)",
-    "har_title": "📥 Guide to Generating Actionable (and Lightweight) .HAR Files",
-    "har_subtitle": "Follow this procedure to generate network logs that are rich in analytics data but small enough to avoid server timeout crashes."
+    "reason_pts": "Analysis Score: {}/99 pts (Infra: {}/40 pts, Data_Event: {}/30 pts, Data_Session: {}/29 pts)"
 }
 
-# --- ZARZĄDZANIE STANEM WIDŻETU (Do przycisku Clear) ---
-if "uploader_key" not in st.session_state:
-    st.session_state.uploader_key = 0
-
 # --- PANEL BOCZNY (SIDEBAR) ---
+# 1. Logo na samej górze
 logo_path = "FSE_Logo.png"
 if os.path.exists(logo_path):
-    st.sidebar.image(logo_path)
+    st.sidebar.image(logo_path, use_container_width=True)
 else:
     st.sidebar.markdown("<h3 style='text-align: center; color: #888;'>[ LOGO ]</h3>", unsafe_allow_html=True)
 
@@ -109,6 +100,7 @@ st.sidebar.markdown(t["sidebar_mode"])
 st.sidebar.caption(t["sidebar_version"])
 st.sidebar.info(t["sidebar_changelog"])
 
+# 2. Stopka na dole panelu bocznego
 st.sidebar.markdown(
     """
     <div style="margin-top: 50px; text-align: center; color: #888;">
@@ -117,6 +109,7 @@ st.sidebar.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 # --- FUNKCJA WSPÓLNA: PANCERNE FILTROWANIE HAR ---
 def filtruj_logi_har(har_json):
@@ -197,8 +190,6 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
     wykryte_ga4_tids = set()
     wykryte_ads_tids = set()
     server_side_domain = "No"
-    pewnosc = "N/A"
-    werdykt = "N/A"
     
     gmp_evidence = False
     cm360_ddm = False
@@ -438,15 +429,15 @@ def analizuj_lokalnie(requests_list, czysta_domena, wykryte_inne, t_dict):
         "other_systems_text": inny_system_display,
         "reason": uzasadnienie_tekst,
         "rules": {
-            "r1": r1,
-            "r2": r2,
-            "r3": r3,
-            "r4": r4,
-            "r5": r5,
-            "r6": r6,
-            "r7": r7,
-            "r8": r8,
-            "r9": r9
+            "r1": f"{r1} {t_dict['rule_t1_res'].format(max_ep_per_event)}",
+            "r2": f"{r2} {t_dict['rule_t2_res'].format(max_custom_param_len)}",
+            "r3": f"{r3} {t_dict['rule_t3_res'].format(max_up_per_event)}",
+            "r4": f"{r4} {t_dict['rule_t4_res'].format(max_item_params)}",
+            "r5": f"{r5} {t_dict['rule_m5_res'].format(len(globalne_ep_params))}",
+            "r6": f"{r6} {t_dict['rule_m6_res'].format(server_side_domain)}",
+            "r7": f"{r7} " + (t_dict['rule_m7_res_yes'].format(len(wykryte_ga4_tids)) if len(wykryte_ga4_tids)>1 else t_dict['rule_m7_res_no']),
+            "r8": f"{r8} {cm360_szczegoly_clean}",
+            "r9": f"{r9} " + (t_dict['rule_m9_res_yes'] if gmp_evidence else t_dict['rule_m9_res_no'])
         }
     }
     
@@ -464,21 +455,8 @@ tab1, tab2, tab3 = st.tabs(t["tabs"])
 with tab1:
     detailed_data_rows = []
 
-    col_desc, col_clear = st.columns([4, 1])
-    with col_desc:
-        st.markdown(t["upload_desc"])
-        st.caption(t["upload_warning"])
-    with col_clear:
-        if st.button(t["btn_clear_files"]):
-            st.session_state.uploader_key = (st.session_state.uploader_key + 1) % 100
-            st.rerun()
-
-    wgrane_pliki = st.file_uploader(
-        t["upload_label"], 
-        type=["har"], 
-        accept_multiple_files=True, 
-        key=f"uploader_{st.session_state.uploader_key}"
-    )
+    st.markdown(t["upload_desc"])
+    wgrane_pliki = st.file_uploader(t["upload_label"], type=["har"], accept_multiple_files=True)
     
     if st.button(t["btn_analyze"]):
         if wgrane_pliki:
@@ -524,38 +502,27 @@ with tab1:
                                 st.markdown(parts[0])
                                 
                                 if len(parts) > 1:
-                                    try:
-                                        extracted_json = json.loads(parts[1].split(ticks)[0].strip())
-                                    except json.JSONDecodeError as e:
-                                        st.error(f"JSON Parsing Error for {czysta_domena}: {e}")
-                                        extracted_json = {
-                                            "verdict": "Error",
-                                            "confidence": "N/A",
-                                            "tid": "None",
-                                            "other_systems_text": "N/A",
-                                            "reason": "Engine output parsing failure",
-                                            "rules": {}
-                                        }
-                                        
+                                    extracted_json = json.loads(parts[1].split(ticks)[0].strip())
+                                    
                                     detailed_row = {
                                         t["csv_col_domain"]: czysta_domena,
-                                        t["csv_col_verdict"]: extracted_json.get("verdict", "N/A"),
-                                        t["csv_col_confidence"]: extracted_json.get("confidence", "N/A"),
-                                        t["csv_col_other"]: extracted_json.get("other_systems_text", "N/A"),
-                                        t["csv_col_tid"]: extracted_json.get("tid", "N/A"),
-                                        t["csv_col_reason"]: extracted_json.get("reason", "N/A")
+                                        t["csv_col_verdict"]: extracted_json.get("verdict"),
+                                        t["csv_col_confidence"]: extracted_json.get("confidence"),
+                                        t["csv_col_other"]: extracted_json.get("other_systems_text"),
+                                        t["csv_col_tid"]: extracted_json.get("tid"),
+                                        t["csv_col_reason"]: extracted_json.get("reason")
                                     }
                                     
                                     rules_obj = extracted_json.get("rules", {})
-                                    detailed_row[t["rule_t1_type"]] = rules_obj.get("r1", "-")
-                                    detailed_row[t["rule_t2_type"]] = rules_obj.get("r2", "-")
-                                    detailed_row[t["rule_t3_type"]] = rules_obj.get("r3", "-")
-                                    detailed_row[t["rule_t4_type"]] = rules_obj.get("r4", "-")
-                                    detailed_row[t["rule_m5_type"]] = rules_obj.get("r5", "-")
-                                    detailed_row[t["rule_m6_type"]] = rules_obj.get("r6", "-")
-                                    detailed_row[t["rule_m7_type"]] = rules_obj.get("r7", "-")
-                                    detailed_row[t["rule_m8_type"]] = rules_obj.get("r8", "-")
-                                    detailed_row[t["rule_m9_type"]] = rules_obj.get("r9", "-")
+                                    detailed_row[t["rule_t1_type"]] = rules_obj.get("r1", "")
+                                    detailed_row[t["rule_t2_type"]] = rules_obj.get("r2", "")
+                                    detailed_row[t["rule_t3_type"]] = rules_obj.get("r3", "")
+                                    detailed_row[t["rule_t4_type"]] = rules_obj.get("r4", "")
+                                    detailed_row[t["rule_m5_type"]] = rules_obj.get("r5", "")
+                                    detailed_row[t["rule_m6_type"]] = rules_obj.get("r6", "")
+                                    detailed_row[t["rule_m7_type"]] = rules_obj.get("r7", "")
+                                    detailed_row[t["rule_m8_type"]] = rules_obj.get("r8", "")
+                                    detailed_row[t["rule_m9_type"]] = rules_obj.get("r9", "")
                                     
                                     detailed_data_rows.append(detailed_row)
                     except Exception as e:
@@ -567,23 +534,34 @@ with tab1:
         st.write("---")
         st.subheader(t["table_detailed_title"])
         
-        detailed_data_rows.sort(key=lambda x: str(x.get(t["csv_col_domain"], "")).lower())
+        desc_row = {
+            t["csv_col_domain"]: "ℹ️ RULE DESCRIPTION",
+            t["csv_col_verdict"]: "-",
+            t["csv_col_confidence"]: "-",
+            t["csv_col_other"]: "-",
+            t["csv_col_tid"]: "-",
+            t["csv_col_reason"]: "-",
+            t["rule_t1_type"]: t["rule_t1_desc"],
+            t["rule_t2_type"]: t["rule_t2_desc"],
+            t["rule_t3_type"]: t["rule_t3_desc"],
+            t["rule_t4_type"]: t["rule_t4_desc"],
+            t["rule_m5_type"]: t["rule_m5_desc"],
+            t["rule_m6_type"]: t["rule_m6_desc"],
+            t["rule_m7_type"]: t["rule_m7_desc"],
+            t["rule_m8_type"]: t["rule_m8_desc"],
+            t["rule_m9_type"]: t["rule_m9_desc"]
+        }
         
-        df_detailed = pd.DataFrame(detailed_data_rows)
-        st.dataframe(df_detailed, width='stretch')
+        df_detailed = pd.DataFrame([desc_row] + detailed_data_rows)
+        st.dataframe(df_detailed, use_container_width=True)
         
         csv_detailed = df_detailed.to_csv(index=False, sep=';', encoding='utf-8-sig')
-        
         st.download_button(
             label=t["btn_download_csv_detailed"],
             data=csv_detailed,
             file_name=t["csv_filename_detailed"],
             mime="text/csv"
         )
-        
-        tsv_detailed = df_detailed.to_csv(index=False, sep='\t')
-        with st.expander(t["expander_copy"]):
-            st.code(tsv_detailed, language="text")
 
 with tab2:
     st.title("📚 Analytics & Business Knowledge Base")
@@ -613,14 +591,9 @@ with tab3:
     st.markdown("""
     ### 🛠️ Step-by-Step Instructions for Consultants and Sales Teams:
     
-    #### 0️⃣ Step 0: CRITICAL PRE-REQUISITE (Filter out media)
-    * Open DevTools (`F12`) and navigate to the **Network** tab.
-    * Click the **Filter** icon (looks like a funnel) and select **`Fetch/XHR`** (or block `Img` and `Media`).
-    * *Why?* Unfiltered `.har` files from e-commerce sites can exceed 300MB, which will crash the server and cause a `ClientDisconnect` error during upload. **Only analytical data matters!**
-
     #### 1️⃣ Step 1: Prepare a Clean Environment (Incognito Mode)
     * Always open the target website in a **new Incognito Window** (`Ctrl+Shift+N` or `Cmd+Shift+N`).
-    * *Why?* This bypasses all cached cookies, forcing the website to re-display the privacy banner and execute all tracking scripts from scratch.
+    * *Why?* This bypasses all cached cookies. It forces the website to re-display the privacy banner and execute all tracking initialization scripts from scratch.
     
     #### 2️⃣ Step 2: Open the Network Tab in DevTools
     * Go to the website's homepage, press **F12** (or right-click and select **Inspect**).
@@ -633,11 +606,11 @@ with tab3:
     #### 4️⃣ Step 4: THE CRITICAL STEP – Full Cookie Acceptance
     * Refresh the page (`F5`). Wait for the privacy consent banner (CMP) to pop up.
     * **Click the primary button to accept all marketing and analytical tracking** (e.g., *'Accept All'*, *'Agree'*).
-    * *Why?* Without explicit consent, Enterprise tracking systems remain blocked and won't ping the `.har` file!
+    * *Why does this matter?* Without explicit consent, Enterprise-level tracking systems will remain entirely blocked and won't fire any network pings into the HAR file!
     
     #### 5️⃣ Step 5: Execute the Full E-commerce Funnel
     * Click on any item to open the **product page**, then add it to the **cart**.
-    * **Slowly scroll to the bottom of the page.** Modern lazy-loading frameworks delay enterprise tags until the user reaches the footer.
+    * **Slowly scroll to the bottom of the page.** Modern lazy-loading and conditional firing frameworks often delay enterprise tags until the user reaches the footer or cart interaction sections.
     
     #### 6️⃣ Step 6: Export the .HAR File
     * **Right-click** anywhere inside the list of recorded network requests in the DevTools panel.
